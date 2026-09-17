@@ -4,167 +4,176 @@
 
 ### Open-source security and server management platform for Linux
 
-Protect, monitor and manage your Linux servers from a Windows application.
+Protect, monitor and manage your Linux servers from Windows.
 
 <br>
 
-[![GitHub release](https://img.shields.io/github/v/release/Lukas6623/ServerGuard?style=for-the-badge&logo=github&label=Latest%20Release)](https://github.com/Lukas6623/ServerGuard/releases)
-[![GitHub stars](https://img.shields.io/github/stars/Lukas6623/ServerGuard?style=for-the-badge&logo=github)](https://github.com/Lukas6623/ServerGuard/stargazers)
-[![GitHub license](https://img.shields.io/github/license/Lukas6623/ServerGuard?style=for-the-badge)](https://github.com/Lukas6623/ServerGuard/blob/main/LICENSE)
-[![GitHub issues](https://img.shields.io/github/issues/Lukas6623/ServerGuard?style=for-the-badge&logo=github)](https://github.com/Lukas6623/ServerGuard/issues)
+[![Latest Release](https://img.shields.io/github/v/release/Lukas6623/ServerGuard?style=for-the-badge&logo=github&label=Latest%20Release)](https://github.com/Lukas6623/ServerGuard/releases)
+[![Stars](https://img.shields.io/github/stars/Lukas6623/ServerGuard?style=for-the-badge&logo=github)](https://github.com/Lukas6623/ServerGuard/stargazers)
+[![Issues](https://img.shields.io/github/issues/Lukas6623/ServerGuard?style=for-the-badge&logo=github)](https://github.com/Lukas6623/ServerGuard/issues)
+[![License](https://img.shields.io/github/license/Lukas6623/ServerGuard?style=for-the-badge)](https://github.com/Lukas6623/ServerGuard/blob/main/LICENSE)
 
-<br>
+<br><br>
 
-<a href="https://github.com/Lukas6623/ServerGuard/releases">
-  <img src="https://img.shields.io/badge/Download-Latest%20Release-2ea44f?style=for-the-badge">
+<a href="https://github.com/Lukas6623/ServerGuard/releases/tag/v1.0.1">
+<img src="https://img.shields.io/badge/⬇%20DOWNLOAD%20SERVERGUARD%20SETUP-2ea44f?style=for-the-badge&logo=windows&logoColor=white">
 </a>
+
+<br><br>
+
+**Windows 10 / Windows 11**
 
 </div>
 
 ---
 
-## 📖 About
+# 📖 About
 
-**ServerGuard** is an open-source security and server management platform designed
-to help users monitor, protect and manage Linux servers.
+**ServerGuard** is an open-source security and server management platform
+designed to help users monitor, protect and manage Linux servers.
 
-The project consists of a Windows desktop application and a collection of
-lightweight security modules that run directly on the Linux server.
+The project combines a Windows desktop application with lightweight
+security modules that run directly on the Linux server.
 
-ServerGuard is designed with a **protection-first approach**, providing tools
-for SSH monitoring, brute-force protection, file protection, SSH hardening
-and server notifications.
+ServerGuard focuses on server protection, SSH security, brute-force
+detection, file protection, SSH hardening and security notifications.
+
+The project is designed for system administrators, developers, students
+and anyone interested in Linux server security and automation.
 
 ---
 
-## ✨ Features
+# ✨ Features
 
 <table>
 <tr>
-<td width="50%">
 
-### 🔐 SSH Security
+<td width="50%" valign="top">
 
+## 🔐 SSH Security
+
+- SSH connection management
 - SSH login monitoring
-- Failed login detection
 - Successful login detection
+- Failed login detection
 - Invalid user detection
 - SSH hardening
-- Remote SSH management
+- Remote SSH commands
+- SFTP support
 
 </td>
 
-<td width="50%">
+<td width="50%" valign="top">
 
-### 🛡️ Brute-Force Protection
+## 🛡️ Brute-Force Protection
 
-- Failed login detection
+- Failed authentication monitoring
 - Automatic IP blocking
 - UFW integration
-- Temporary and permanent blocks
-- IP whitelist support
+- Temporary IP blocks
+- Permanent IP blocks
+- IP whitelist
 - Security event logging
 
 </td>
+
 </tr>
 
 <tr>
-<td width="50%">
 
-### 📁 File Protection
+<td width="50%" valign="top">
+
+## 📁 File Protection
 
 - File integrity monitoring
+- Protected file monitoring
 - File change detection
-- Protected files
-- Security events
+- Security event logging
 - Automatic protection service
+- Remote module updates
 
 </td>
 
-<td width="50%">
+<td width="50%" valign="top">
 
-### 📱 Notifications
+## 📱 Notifications
 
 - Telegram notifications
 - SSH security alerts
 - Brute-force alerts
 - File protection alerts
 - Server security events
-
-</td>
-</tr>
-
-<tr>
-<td width="50%">
-
-### 🖥️ Windows Application
-
-- SSH/SFTP connection
-- Remote server management
-- Security management
-- Module management
-- Server monitoring
 - Windows notifications
 
 </td>
 
-<td width="50%">
+</tr>
 
-### ⚙️ Automatic Updates
+<tr>
 
-- Module updates
-- Version checking
-- Backup before update
-- Automatic installation
-- SHA-256 verification
-- Update rollback support
+<td width="50%" valign="top">
+
+## 🖥️ Windows Application
+
+- C++ application
+- SSH/SFTP connection
+- Remote Linux server management
+- Security management
+- Module management
+- Server monitoring
+- Windows system notifications
 
 </td>
+
+<td width="50%" valign="top">
+
+## ⚙️ Automatic Updates
+
+- Version checking
+- Module updates
+- Application updates
+- SHA-256 verification
+- Backup before update
+- Automatic installation
+- Update recovery
+
+</td>
+
 </tr>
 </table>
 
 ---
 
-# 🏗️ Architecture
+# 🧩 Project Components
 
-ServerGuard uses a client/server-style architecture.
+ServerGuard consists of several components.
 
 ```text
-                    ┌─────────────────────────┐
-                    │      Windows PC         │
-                    │                         │
-                    │      ServerGuard        │
-                    │        C++ App          │
-                    │                         │
-                    └────────────┬────────────┘
-                                 │
-                         SSH / SFTP / Commands
-                                 │
-                                 ▼
-                    ┌─────────────────────────┐
-                    │      Linux Server       │
-                    │                         │
-                    │   ┌─────────────────┐   │
-                    │   │ Security Modules│   │
-                    │   └─────────────────┘   │
-                    │                         │
-                    │   ┌─────────────────┐   │
-                    │   │   FileGuard     │   │
-                    │   └─────────────────┘   │
-                    │                         │
-                    │   ┌─────────────────┐   │
-                    │   │ Brute Force     │   │
-                    │   │ Guard           │   │
-                    │   └─────────────────┘   │
-                    │                         │
-                    │   ┌─────────────────┐   │
-                    │   │ SSH Hardening   │   │
-                    │   └─────────────────┘   │
-                    │                         │
-                    └────────────┬────────────┘
-                                 │
-                                 ▼
-                         ┌───────────────┐
-                         │   Telegram    │
-                         │ Notifications │
-                         └───────────────┘
+┌─────────────────────────────────────────────┐
+│                  ServerGuard                │
+│                                             │
+│  ┌───────────────────────────────────────┐  │
+│  │       Windows Application             │  │
+│  │             C++ / libssh2             │  │
+│  └───────────────────┬───────────────────┘  │
+│                      │                      │
+│                SSH / SFTP                  │
+│                      │                      │
+│                      ▼                      │
+│  ┌───────────────────────────────────────┐  │
+│  │          Linux Server                 │  │
+│  │                                       │  │
+│  │  ┌──────────────┐ ┌────────────────┐  │  │
+│  │  │ FileGuard    │ │ Brute Force    │  │  │
+│  │  │              │ │ Guard          │  │  │
+│  │  └──────────────┘ └────────────────┘  │  │
+│  │                                       │  │
+│  │  ┌──────────────┐ ┌────────────────┐  │  │
+│  │  │ SSH Monitor  │ │ SSH Hardening  │  │  │
+│  │  └──────────────┘ └────────────────┘  │  │
+│  │                                       │  │
+│  └───────────────────┬───────────────────┘  │
+│                      │                      │
+│                      ▼                      │
+│              Telegram Notifications         │
+└─────────────────────────────────────────────┘
