@@ -8,14 +8,14 @@ Protect, monitor and manage your Linux servers from Windows.
 
 <br>
 
-[![Latest Release](https://img.shields.io/github/v/release/Lukas6623/ServerGuard?style=for-the-badge&logo=github&label=Latest%20Release)](https://github.com/Lukas6623/ServerGuard/releases)
+[![Version](https://img.shields.io/github/v/release/Lukas6623/ServerGuard?style=for-the-badge&logo=github&label=Version)](https://github.com/Lukas6623/ServerGuard/releases/latest)
 [![Stars](https://img.shields.io/github/stars/Lukas6623/ServerGuard?style=for-the-badge&logo=github)](https://github.com/Lukas6623/ServerGuard/stargazers)
 [![Issues](https://img.shields.io/github/issues/Lukas6623/ServerGuard?style=for-the-badge&logo=github)](https://github.com/Lukas6623/ServerGuard/issues)
-[![License](https://img.shields.io/github/license/Lukas6623/ServerGuard?style=for-the-badge)](https://github.com/Lukas6623/ServerGuard/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/Lukas6623/ServerGuard?style=for-the-badge&logo=github)](https://github.com/Lukas6623/ServerGuard/blob/main/LICENSE)
 
 <br><br>
 
-<a href="https://github.com/Lukas6623/ServerGuard/releases/tag/v1.0.1">
+<a href="https://github.com/Lukas6623/ServerGuard/releases/latest">
 <img src="https://img.shields.io/badge/⬇%20DOWNLOAD%20SERVERGUARD%20SETUP-2ea44f?style=for-the-badge&logo=windows&logoColor=white">
 </a>
 
@@ -157,7 +157,7 @@ ServerGuard consists of several components.
 │  │             C++ / libssh2             │  │
 │  └───────────────────┬───────────────────┘  │
 │                      │                      │
-│                SSH / SFTP                  │
+│                SSH / SFTP                   │
 │                      │                      │
 │                      ▼                      │
 │  ┌───────────────────────────────────────┐  │
