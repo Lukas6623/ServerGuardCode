@@ -12,6 +12,7 @@ Protect, monitor and manage your Linux servers from Windows.
 [![Stars](https://img.shields.io/github/stars/Lukas6623/ServerGuard?style=for-the-badge&logo=github)](https://github.com/Lukas6623/ServerGuard/stargazers)
 [![Issues](https://img.shields.io/github/issues/Lukas6623/ServerGuard?style=for-the-badge&logo=github)](https://github.com/Lukas6623/ServerGuard/issues)
 [![License](https://img.shields.io/github/license/Lukas6623/ServerGuard?style=for-the-badge&logo=github)](https://github.com/Lukas6623/ServerGuard/blob/main/LICENSE)
+[![Telegram](https://img.shields.io/badge/Telegram-ServerGuard%20Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/server_guard_channel)
 
 <br><br>
 
