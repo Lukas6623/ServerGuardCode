@@ -16,7 +16,7 @@ Protect, monitor and manage your Linux servers from Windows.
 
 <br><br>
 
-<a href="https://github.com/Lukas6623/ServerGuard/releases/latest">
+<a href="https://github.com/Lukas6623/ServerGuard/releases/download/serverSetupV.0.0.2/ServerGuardSetupV1.zip">
 <img src="https://img.shields.io/badge/⬇%20DOWNLOAD%20SERVERGUARD%20SETUP-2ea44f?style=for-the-badge&logo=windows&logoColor=white">
 </a>
 
@@ -91,7 +91,7 @@ and anyone interested in Linux server security and automation.
 - File change detection
 - Security event logging
 - Automatic protection service
-- Remote module updates
+- Remote module management
 
 </td>
 
