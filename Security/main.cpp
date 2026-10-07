@@ -27,16 +27,12 @@
 #pragma comment(lib, "ws2_32.lib")
 
 
-// ============================================================
-// AUTH METHOD
-// ============================================================
-
 enum class AuthMethod
 {
-    Password,       // логин + пароль (с fallback на keyboard-interactive)
-    PublicKey,      // файл приватного ключа (+ passphrase)
-    Agent,          // ssh-agent (Pageant / Windows OpenSSH agent)
-    Interactive     // keyboard-interactive (PAM, 2FA)
+    Password,
+    PublicKey,
+    Agent,
+    Interactive
 };
 
 static std::string authMethodToString(AuthMethod m)
@@ -70,30 +66,20 @@ static std::string authMethodTitle(AuthMethod m)
 }
 
 
-// ============================================================
-// CONFIG
-// ============================================================
-
 struct Config
 {
     std::string host;
     int port = 22;
     std::string username;
 
-    // Для Password / Interactive - пароль для входа.
-    // Для PublicKey / Agent - необязательный sudo-пароль для модулей.
     std::string password;
 
     AuthMethod auth = AuthMethod::Password;
 
-    std::string keyPath;      // путь к приватному ключу (сохраняется)
-    std::string passphrase;   // passphrase ключа (НЕ сохраняется)
+    std::string keyPath;
+    std::string passphrase;
 };
 
-
-// ============================================================
-// INPUT HELPERS
-// ============================================================
 
 static std::string trim(const std::string& s)
 {
@@ -122,7 +108,6 @@ static std::string readLine(const std::string& prompt, const std::string& def = 
     return line.empty() ? def : line;
 }
 
-// Ввод без отображения символов (пароли, passphrase)
 static std::string readSecret(const std::string& prompt)
 {
     std::cout << prompt;
@@ -213,18 +198,6 @@ static std::string defaultKeyPath()
 }
 
 
-// ============================================================
-// SAVE CONFIG
-// ============================================================
-// Формат (первые 4 строки совместимы со старой версией):
-//   host
-//   port
-//   username
-//   password
-//   auth method        (password | key | agent | interactive)
-//   key path
-// Passphrase ключа на диск НЕ записывается.
-
 bool saveConfig(const Config& cfg)
 {
     std::ofstream file("server.cfg");
@@ -242,10 +215,6 @@ bool saveConfig(const Config& cfg)
     return true;
 }
 
-
-// ============================================================
-// LOAD CONFIG
-// ============================================================
 
 bool loadConfig(Config& cfg)
 {
@@ -282,7 +251,6 @@ bool loadConfig(Config& cfg)
         return false;
     }
 
-    // Необязательные поля (нет в старых конфигах)
     std::string method;
     std::string keyPath;
 
@@ -304,18 +272,12 @@ bool loadConfig(Config& cfg)
 }
 
 
-// ============================================================
-// ENTER SERVER DATA
-// ============================================================
-
 bool enterServerData(Config& cfg)
 {
     std::cout << "\n";
     std::cout << "========================================\n";
     std::cout << "        SERVER CONNECTION SETUP\n";
     std::cout << "========================================\n\n";
-
-    // ---------------- HOST ----------------
 
     cfg.host.clear();
 
@@ -331,8 +293,6 @@ bool enterServerData(Config& cfg)
                 return false;
         }
     }
-
-    // ---------------- PORT ----------------
 
     std::string portInput = readLine("SSH port [22]: ");
 
@@ -359,8 +319,6 @@ bool enterServerData(Config& cfg)
         cfg.port = 22;
     }
 
-    // ---------------- USERNAME ----------------
-
     cfg.username.clear();
 
     while (cfg.username.empty())
@@ -375,8 +333,6 @@ bool enterServerData(Config& cfg)
                 return false;
         }
     }
-
-    // ---------------- AUTH METHOD ----------------
 
     std::cout << "\nAuthentication method:\n";
     std::cout << "1. Password\n";
@@ -451,10 +407,6 @@ bool enterServerData(Config& cfg)
 }
 
 
-// ============================================================
-// CONNECTION ACTION
-// ============================================================
-
 enum class ConnectionAction
 {
     RetryPassword,
@@ -462,10 +414,6 @@ enum class ConnectionAction
     ExitProgram
 };
 
-
-// ============================================================
-// ASK CONNECTION ACTION
-// ============================================================
 
 ConnectionAction askConnectionAction(const Config& cfg)
 {
@@ -516,12 +464,6 @@ ConnectionAction askConnectionAction(const Config& cfg)
 }
 
 
-// ============================================================
-// HANDLE CONNECTION FAILURE
-// true  - повторить попытку подключения
-// false - выйти из программы
-// ============================================================
-
 bool handleConnectionFailure(Config& cfg)
 {
     ConnectionAction action = askConnectionAction(cfg);
@@ -536,7 +478,6 @@ bool handleConnectionFailure(Config& cfg)
         return enterServerData(cfg);
     }
 
-    // RetryPassword
     switch (cfg.auth)
     {
     case AuthMethod::Password:
@@ -571,11 +512,6 @@ bool handleConnectionFailure(Config& cfg)
     return true;
 }
 
-
-// ============================================================
-// HOST KEY VERIFICATION (trust on first use)
-// Отпечатки хранятся в known_hosts.txt рядом с программой.
-// ============================================================
 
 static std::string toHex(const unsigned char* data, size_t len)
 {
@@ -624,7 +560,6 @@ bool verifyHostKey(LIBSSH2_SESSION* session, const Config& cfg)
     std::string id =
         cfg.host + ":" + std::to_string(cfg.port);
 
-    // Читаем известные хосты
     std::vector<std::string> lines;
 
     std::string storedFingerprint;
@@ -654,16 +589,12 @@ bool verifyHostKey(LIBSSH2_SESSION* session, const Config& cfg)
         }
     }
 
-    // ---------- Known host ----------
-
     if (found && storedFingerprint == fingerprint)
     {
         std::cout << "Host key verified.\n";
 
         return true;
     }
-
-    // ---------- Changed key ----------
 
     if (found)
     {
@@ -703,8 +634,6 @@ bool verifyHostKey(LIBSSH2_SESSION* session, const Config& cfg)
         return true;
     }
 
-    // ---------- New host ----------
-
     std::cout << "\nFirst connection to " << id << ".\n";
     std::cout << "Server host key fingerprint:\n";
     std::cout << fingerprint << "\n\n";
@@ -724,10 +653,6 @@ bool verifyHostKey(LIBSSH2_SESSION* session, const Config& cfg)
     return true;
 }
 
-
-// ============================================================
-// KEYBOARD-INTERACTIVE CALLBACK
-// ============================================================
 
 struct KbdContext
 {
@@ -778,14 +703,12 @@ static void kbdCallback(
             !ctx->password->empty() &&
             !ctx->passwordUsed)
         {
-            // Первый запрос пароля - отвечаем сохранённым паролем
             answer = *ctx->password;
 
             ctx->passwordUsed = true;
         }
         else
         {
-            // Коды 2FA и прочее - спрашиваем пользователя
             if (prompts[i].echo)
                 answer = readLine(prompt);
             else
@@ -799,10 +722,6 @@ static void kbdCallback(
     }
 }
 
-
-// ============================================================
-// AUTH HELPERS
-// ============================================================
 
 static void printSessionError(LIBSSH2_SESSION* session)
 {
@@ -1007,10 +926,6 @@ static bool authAgent(LIBSSH2_SESSION* session, const Config& cfg)
 }
 
 
-// ============================================================
-// AUTHENTICATE
-// ============================================================
-
 bool authenticate(LIBSSH2_SESSION* session, const Config& cfg)
 {
     char* list =
@@ -1063,7 +978,6 @@ bool authenticate(LIBSSH2_SESSION* session, const Config& cfg)
                 return true;
         }
 
-        // Многие серверы разрешают пароль только через keyboard-interactive
         if (supports("keyboard-interactive"))
         {
             std::cout
@@ -1125,10 +1039,6 @@ bool authenticate(LIBSSH2_SESSION* session, const Config& cfg)
 }
 
 
-// ============================================================
-// CLOSE CONNECTION
-// ============================================================
-
 static void closeConnection(
     LIBSSH2_SESSION*& session,
     SOCKET& sock,
@@ -1156,17 +1066,11 @@ static void closeConnection(
 }
 
 
-// ============================================================
-// OPEN CONNECTION (TCP + SSH handshake + host key + auth)
-// ============================================================
-
 bool openConnection(
     Config& cfg,
     SOCKET& sock,
     LIBSSH2_SESSION*& session)
 {
-    // ---------------- SOCKET ----------------
-
     sock = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sock == INVALID_SOCKET)
@@ -1175,8 +1079,6 @@ bool openConnection(
 
         return false;
     }
-
-    // ---------------- ADDRESS ----------------
 
     sockaddr_in sin{};
 
@@ -1193,8 +1095,6 @@ bool openConnection(
 
         return false;
     }
-
-    // ---------------- TCP CONNECT ----------------
 
     std::cout
         << "\nConnecting to "
@@ -1220,8 +1120,6 @@ bool openConnection(
 
     std::cout << "TCP connection established.\n";
 
-    // ---------------- SSH SESSION ----------------
-
     session = libssh2_session_init();
 
     if (!session)
@@ -1234,8 +1132,6 @@ bool openConnection(
     }
 
     libssh2_session_set_timeout(session, 30000);
-
-    // ---------------- HANDSHAKE ----------------
 
     int rc = libssh2_session_handshake(session, sock);
 
@@ -1253,8 +1149,6 @@ bool openConnection(
 
     std::cout << "SSH connection established.\n";
 
-    // ---------------- HOST KEY ----------------
-
     if (!verifyHostKey(session, cfg))
     {
         std::cout << "\nHost key is not trusted. Connection aborted.\n";
@@ -1263,8 +1157,6 @@ bool openConnection(
 
         return false;
     }
-
-    // ---------------- AUTHENTICATION ----------------
 
     if (!authenticate(session, cfg))
     {
@@ -1280,10 +1172,6 @@ bool openConnection(
     return true;
 }
 
-
-// ============================================================
-// EXECUTE SSH COMMAND
-// ============================================================
 
 bool executeCommand(
     LIBSSH2_SESSION* session,
@@ -1349,10 +1237,6 @@ bool executeCommand(
     return true;
 }
 
-
-// ============================================================
-// CHANGE DIRECTORY
-// ============================================================
 
 bool changeDirectory(
     LIBSSH2_SESSION* session,
@@ -1453,10 +1337,6 @@ bool changeDirectory(
 }
 
 
-// ============================================================
-// RUN SERVERGUARD TERMINAL
-// ============================================================
-
 void runServerTerminal(
     LIBSSH2_SESSION* session,
     const Config& cfg,
@@ -1465,11 +1345,7 @@ void runServerTerminal(
     Security* security,
     SSHHardening* sshHardening)
 {
-    // ---------------- FILE GUARD ----------------
-
     FileGuard fileGuard(session, cfg.password);
-
-    // ---------------- TERMINAL HEADER ----------------
 
     std::cout << "\n";
     std::cout << "ServerGuard terminal\n";
@@ -1487,11 +1363,7 @@ void runServerTerminal(
     std::cout << "Type 'help' for detailed information.\n";
     std::cout << "\n";
 
-    // ---------------- CURRENT DIRECTORY ----------------
-
     std::string currentDirectory = ".";
-
-    // ---------------- COMMAND LOOP ----------------
 
     while (true)
     {
@@ -1619,22 +1491,14 @@ void runServerTerminal(
 }
 
 
-// ============================================================
-// MAIN
-// ============================================================
-
 int main()
 {
     Config cfg;
-
-    // ---------------- HEADER ----------------
 
     std::cout << "=============================\n";
     std::cout << "        ServerGuard\n";
     std::cout << "=============================\n\n";
 
-
-    // ---------------- LOAD CONFIG ----------------
 
     bool configLoaded = loadConfig(cfg);
 
@@ -1664,9 +1528,6 @@ int main()
             << "Auth: " << authMethodTitle(cfg.auth) << "\n";
 
 
-        // Passphrase не сохраняется -
-        // спрашиваем при каждом запуске
-
         if (cfg.auth == AuthMethod::PublicKey)
         {
             std::cout
@@ -1679,8 +1540,6 @@ int main()
         }
     }
 
-
-    // ---------------- WINDOWS SOCKET ----------------
 
     WSADATA wsadata;
 
@@ -1696,8 +1555,6 @@ int main()
     }
 
 
-    // ---------------- LIBSSH2 INIT ----------------
-
     if (libssh2_init(0) != 0)
     {
         std::cout
@@ -1709,8 +1566,6 @@ int main()
     }
 
 
-    // ---------------- CONNECTION LOOP ----------------
-
     bool connected = false;
 
     LIBSSH2_SESSION* session = nullptr;
@@ -1720,8 +1575,6 @@ int main()
 
     while (!connected)
     {
-        // ---------- SHOW CURRENT SERVER ----------
-
         std::cout
             << "\n========================================\n";
 
@@ -1749,8 +1602,6 @@ int main()
             << "\n";
 
 
-        // ---------- CONNECT ----------
-
         if (!openConnection(
             cfg,
             sock,
@@ -1766,8 +1617,6 @@ int main()
         }
 
 
-        // ---------- SAVE VERIFIED CONNECTION DATA ----------
-
         if (saveConfig(cfg))
         {
             std::cout
@@ -1780,8 +1629,6 @@ int main()
         }
 
 
-        // ---------- MODULE INSTANCES ----------
-
         SSHKeyGuard sshKeyGuard(
             session,
             cfg.password
@@ -1792,18 +1639,6 @@ int main()
             cfg.password
         );
 
-
-        // ====================================================
-        // SSH HARDENING AUTHENTICATION STATE
-        // ====================================================
-        //
-        // true  = connected using SSH private key
-        // false = connected using password
-        //
-        // This value is passed to SSHHardening so that
-        // PasswordAuthentication cannot be disabled when
-        // ServerGuard itself is connected using a password.
-        // ====================================================
 
         bool isKeyAuthentication =
             (cfg.auth == AuthMethod::PublicKey);
@@ -1821,8 +1656,6 @@ int main()
             cfg.password
         );
 
-
-        // ---------- LOCAL WEB SERVER ----------
 
         WebServer webServer(
             "C:\\Program Files\\ServerGuard\\web",
@@ -1854,12 +1687,8 @@ int main()
         }
 
 
-        // ---------- CONNECTION ESTABLISHED ----------
-
         connected = true;
 
-
-        // ---------- RUN TERMINAL ----------
 
         runServerTerminal(
             session,
@@ -1871,15 +1700,11 @@ int main()
         );
 
 
-        // ---------- STOP WEB SERVER ----------
-
         std::cout
             << "\nStopping Web Server...\n";
 
         webServer.stop();
 
-
-        // ---------- DISCONNECT ----------
 
         std::cout
             << "Disconnecting...\n";
@@ -1896,8 +1721,6 @@ int main()
     }
 
 
-    // ---------------- CONNECTION WAS NOT ESTABLISHED ----------------
-
     if (!connected)
     {
         std::cout
@@ -1910,8 +1733,6 @@ int main()
         return 0;
     }
 
-
-    // ---------------- CLEANUP ----------------
 
     libssh2_exit();
 
