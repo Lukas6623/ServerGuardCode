@@ -1,32 +1,15 @@
-// ============================================================
-// restart/TelegramBot_Restart.cpp
-//
-// Категория: ПЕРЕЗАПУСК бота.
-//
-// Содержит:
-//   - TelegramBot::restartService()  — systemctl restart сервиса
-//   - TelegramBot::webRestart()      — web-обёртка
-// ============================================================
-
 #include "../TelegramBot.h"
 #include "../TelegramBotInternal.h"
 
 #include <iostream>
 
-
-// ============================================================
-// RESTART
-// ============================================================
-
 bool TelegramBot::restartService()
 {
     std::cout << "\nRestarting Telegram bot...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     if (!executeRemote("systemctl restart " + TELEGRAM_SERVICE, output, exitCode, true))
     {
@@ -40,17 +23,10 @@ bool TelegramBot::restartService()
         return false;
     }
 
-
     std::cout << "Telegram bot restarted.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// WEB API - RESTART
-// ============================================================
 
 bool TelegramBot::webRestart()
 {
