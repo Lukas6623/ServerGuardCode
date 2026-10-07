@@ -1,101 +1,47 @@
 #pragma once
 
-// ============================================================
-// TelegramBotInternal.h
-//
-// ОБЩИЙ ВНУТРЕННИЙ ЗАГОЛОВОК для всех .cpp файлов TelegramBot.
-// НЕ является публичным API класса (публичный API — только
-// в TelegramBot.h). Подключается из:
-//
-//   TelegramBot.cpp                          (корень)
-//   install/TelegramBot_Install.cpp
-//   update/TelegramBot_Update.cpp
-//   remove/TelegramBot_Remove.cpp
-//   restart/TelegramBot_Restart.cpp
-//   generate_code/TelegramBot_GenerateCode.cpp
-//   stop/TelegramBot_Stop.cpp
-//   autostart_enable/TelegramBot_EnableAutostart.cpp
-//   autostart_disable/TelegramBot_DisableAutostart.cpp
-//
-// Здесь лежит то, что нужно сразу в нескольких .cpp файлах:
-//   - все серверные пути (константы)
-//   - имя и путь systemd-сервиса
-//   - путь к GitHub-репозиторию
-//   - вспомогательные функции: shellQuote, base64Encode, trim
-//
-// Все переменные/функции объявлены как `inline`, поэтому их
-// можно безопасно подключать (через #include) сразу в
-// нескольких .cpp файлах без нарушения ODR (C++17+).
-// ============================================================
-
 #include <string>
 
-// ------------------------------------------------------------
-// SERVER PATHS
-// ------------------------------------------------------------
-
 inline const std::string TELEGRAM_DIR =
-    "/opt/serverguard/telegram";
+"/opt/serverguard/telegram";
 
 inline const std::string TELEGRAM_SCRIPT =
-    "/opt/serverguard/telegram/telegram_bot.py";
+"/opt/serverguard/telegram/telegram_bot.py";
 
 inline const std::string TELEGRAM_CONFIG =
-    "/opt/serverguard/telegram/telegram.conf";
+"/opt/serverguard/telegram/telegram.conf";
 
 inline const std::string TELEGRAM_VERIFICATION =
-    "/opt/serverguard/telegram/verification.json";
+"/opt/serverguard/telegram/verification.json";
 
 inline const std::string TELEGRAM_OWNER =
-    "/opt/serverguard/telegram/owner.json";
+"/opt/serverguard/telegram/owner.json";
 
 inline const std::string TELEGRAM_QUEUE =
-    "/opt/serverguard/telegram/queue";
+"/opt/serverguard/telegram/queue";
 
 inline const std::string TELEGRAM_VENV =
-    "/opt/serverguard/telegram/venv";
+"/opt/serverguard/telegram/venv";
 
 inline const std::string TELEGRAM_SERVICE =
-    "serverguard-telegram.service";
+"serverguard-telegram.service";
 
 inline const std::string TELEGRAM_SERVICE_PATH =
-    "/etc/systemd/system/serverguard-telegram.service";
-
-// ------------------------------------------------------------
-// GITHUB REPOSITORY
-//
-// Бот хранится в отдельном репозитории:
-// https://github.com/Lukas6623/ServerGuardTelegram
-// ------------------------------------------------------------
+"/etc/systemd/system/serverguard-telegram.service";
 
 inline const std::string GITHUB_TELEGRAM_REPOSITORY_ZIP =
-    "https://github.com/"
-    "Lukas6623/ServerGuardTelegram/"
-    "archive/refs/heads/main.zip";
-
-// ------------------------------------------------------------
-// UPDATE / TEMP
-// ------------------------------------------------------------
+"https://github.com/"
+"Lukas6623/ServerGuardTelegram/"
+"archive/refs/heads/main.zip";
 
 inline const std::string TELEGRAM_UPDATE_DIR =
-    "/opt/serverguard/telegram/.repository_update";
+"/opt/serverguard/telegram/.repository_update";
 
 inline const std::string TELEGRAM_UPDATE_ZIP =
-    "/opt/serverguard/telegram/.repository_update.zip";
-
-// ------------------------------------------------------------
-// BACKUP
-//
-// Бэкап лежит ВНЕ активной папки телеграм-бота, т.к. активная
-// папка полностью заменяется при обновлении.
-// ------------------------------------------------------------
+"/opt/serverguard/telegram/.repository_update.zip";
 
 inline const std::string TELEGRAM_CODE_BACKUP =
-    "/opt/serverguard/telegram_backup";
-
-// ------------------------------------------------------------
-// SHELL QUOTE
-// ------------------------------------------------------------
+"/opt/serverguard/telegram_backup";
 
 inline std::string shellQuote(const std::string& value)
 {
@@ -117,10 +63,6 @@ inline std::string shellQuote(const std::string& value)
 
     return result;
 }
-
-// ------------------------------------------------------------
-// BASE64
-// ------------------------------------------------------------
 
 inline std::string base64Encode(const std::string& input)
 {
@@ -159,10 +101,6 @@ inline std::string base64Encode(const std::string& input)
     return output;
 }
 
-// ------------------------------------------------------------
-// TRIM
-// ------------------------------------------------------------
-
 inline std::string trim(const std::string& value)
 {
     std::size_t start = 0;
@@ -174,8 +112,8 @@ inline std::string trim(const std::string& value)
             value[start] == '\n' ||
             value[start] == '\r' ||
             value[start] == '\t'
+            )
         )
-    )
     {
         ++start;
     }
@@ -189,8 +127,8 @@ inline std::string trim(const std::string& value)
             value[end - 1] == '\n' ||
             value[end - 1] == '\r' ||
             value[end - 1] == '\t'
+            )
         )
-    )
     {
         --end;
     }
