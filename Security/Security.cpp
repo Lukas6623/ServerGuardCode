@@ -8,11 +8,6 @@
 #include <vector>
 #include <cctype>
 
-
-// ============================================================
-// CONFIGURATION
-// ============================================================
-
 static const std::string SECURITY_DIR =
 "/opt/serverguard";
 
@@ -31,11 +26,6 @@ static const std::string SECURITY_SERVICE =
 static const std::string SECURITY_SERVICE_PATH =
 "/etc/systemd/system/serverguard-security.service";
 
-
-// ============================================================
-// SECURITY UPDATE CONFIGURATION
-// ============================================================
-
 static const std::string SECURITY_UPDATE_URL =
 "https://raw.githubusercontent.com/"
 "Lukas6623/ServerGuard/main/brute_force_guard.py";
@@ -45,11 +35,6 @@ static const std::string SECURITY_BACKUP_DIR =
 
 static const std::string SECURITY_BACKUP_SCRIPT =
 "/opt/serverguard/backups/security/brute_force_guard.py";
-
-
-// ============================================================
-// BASE64 ENCODE
-// ============================================================
 
 static std::string base64Encode(
     const std::string& input)
@@ -97,11 +82,6 @@ static std::string base64Encode(
     return result;
 }
 
-
-// ============================================================
-// SHELL QUOTE
-// ============================================================
-
 static std::string shellQuote(
     const std::string& value)
 {
@@ -123,11 +103,6 @@ static std::string shellQuote(
 
     return result;
 }
-
-
-// ============================================================
-// TRIM
-// ============================================================
 
 static std::string trim(
     const std::string& value)
@@ -170,11 +145,6 @@ static std::string trim(
     );
 }
 
-
-// ============================================================
-// CONSTRUCTOR
-// ============================================================
-
 Security::Security(
     LIBSSH2_SESSION* sshSession,
     const std::string& password)
@@ -186,10 +156,6 @@ Security::Security(
     sudoAuthenticated(false)
 {}
 
-
-// ============================================================
-// EXECUTE REMOTE COMMAND
-// ============================================================
 bool Security::executeRemote(
     const std::string& command,
     std::string& output,
@@ -206,10 +172,6 @@ bool Security::executeRemote(
 
         return false;
     }
-
-    /*
-        Открываем SSH channel.
-    */
 
     LIBSSH2_CHANNEL* channel =
         libssh2_channel_open_session(session);
@@ -240,19 +202,11 @@ bool Security::executeRemote(
         return false;
     }
 
-    /*
-        Устанавливаем окружение.
-    */
-
     libssh2_channel_setenv(
         channel,
         "LC_ALL",
         "C"
     );
-
-    /*
-        Формируем команду.
-    */
 
     std::string finalCommand;
 
@@ -278,10 +232,6 @@ bool Security::executeRemote(
         finalCommand =
             command;
     }
-
-    /*
-        Выполняем удалённую команду.
-    */
 
     int execResult =
         libssh2_channel_exec(
@@ -320,19 +270,10 @@ bool Security::executeRemote(
         return false;
     }
 
-    /*
-        Объединяем stderr со stdout.
-    */
-
     libssh2_channel_handle_extended_data2(
         channel,
         LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE
     );
-
-    /*
-        Если требуется sudo —
-        передаём пароль.
-    */
 
     if (useSudo)
     {
@@ -358,10 +299,6 @@ bool Security::executeRemote(
         }
     }
 
-    /*
-        Читаем stdout/stderr.
-    */
-
     char buffer[4096];
 
     while (true)
@@ -372,10 +309,6 @@ bool Security::executeRemote(
                 buffer,
                 sizeof(buffer)
             );
-
-        /*
-            Получили данные.
-        */
 
         if (bytesRead > 0)
         {
@@ -389,19 +322,10 @@ bool Security::executeRemote(
             continue;
         }
 
-        /*
-            libssh2 временно не может
-            вернуть данные.
-        */
-
         if (bytesRead == LIBSSH2_ERROR_EAGAIN)
         {
             continue;
         }
-
-        /*
-            Канал сообщает EOF.
-        */
 
         if (bytesRead == 0)
         {
@@ -412,10 +336,6 @@ bool Security::executeRemote(
 
             continue;
         }
-
-        /*
-            Реальная ошибка чтения.
-        */
 
         char* errorMessage = nullptr;
 
@@ -447,10 +367,6 @@ bool Security::executeRemote(
         break;
     }
 
-    /*
-        Завершаем канал.
-    */
-
     libssh2_channel_send_eof(channel);
 
     libssh2_channel_wait_eof(channel);
@@ -459,29 +375,15 @@ bool Security::executeRemote(
 
     libssh2_channel_wait_closed(channel);
 
-    /*
-        Получаем код завершения
-        удалённой команды.
-    */
-
     exitCode =
         libssh2_channel_get_exit_status(
             channel
         );
 
-    /*
-        Освобождаем channel.
-    */
-
     libssh2_channel_free(channel);
 
     return exitCode == 0;
 }
-
-
-// ============================================================
-// CHECK COMMAND
-// ============================================================
 
 bool Security::commandExists(
     const std::string& command)
@@ -498,11 +400,6 @@ bool Security::commandExists(
         false
     );
 }
-
-
-// ============================================================
-// SUDO AUTHENTICATION
-// ============================================================
 
 bool Security::authenticateSudo()
 {
@@ -538,11 +435,6 @@ bool Security::authenticateSudo()
 
     return false;
 }
-
-
-// ============================================================
-// CHECK ROOT OR SUDO
-// ============================================================
 
 bool Security::checkRootOrSudo()
 {
@@ -595,11 +487,6 @@ bool Security::checkRootOrSudo()
     return true;
 }
 
-
-// ============================================================
-// CREATE DIRECTORIES
-// ============================================================
-
 bool Security::createDirectories()
 {
     std::string output;
@@ -651,11 +538,6 @@ bool Security::createDirectories()
     return true;
 }
 
-
-// ============================================================
-// SET SCRIPT PERMISSIONS
-// ============================================================
-
 bool Security::setFilePermissions()
 {
     std::string output;
@@ -687,11 +569,6 @@ bool Security::setFilePermissions()
 
     return true;
 }
-
-
-// ============================================================
-// CREATE SYSTEMD SERVICE
-// ============================================================
 
 bool Security::createSystemdService()
 {
@@ -757,11 +634,6 @@ bool Security::createSystemdService()
     return true;
 }
 
-
-// ============================================================
-// RELOAD SYSTEMD
-// ============================================================
-
 bool Security::reloadSystemd()
 {
     std::string output;
@@ -786,11 +658,6 @@ bool Security::reloadSystemd()
 
     return true;
 }
-
-
-// ============================================================
-// ENABLE SERVICE
-// ============================================================
 
 bool Security::enableService()
 {
@@ -818,11 +685,6 @@ bool Security::enableService()
 
     return true;
 }
-
-
-// ============================================================
-// START SERVICE
-// ============================================================
 
 bool Security::startService()
 {
@@ -862,11 +724,6 @@ bool Security::startService()
     return true;
 }
 
-
-// ============================================================
-// STOP SERVICE
-// ============================================================
-
 bool Security::stopService()
 {
     std::string output;
@@ -886,11 +743,6 @@ bool Security::stopService()
 
     return true;
 }
-
-
-// ============================================================
-// DISABLE SERVICE
-// ============================================================
 
 bool Security::disableService()
 {
@@ -912,11 +764,6 @@ bool Security::disableService()
     return true;
 }
 
-
-// ============================================================
-// SERVICE EXISTS
-// ============================================================
-
 bool Security::serviceExists()
 {
     std::string output;
@@ -930,11 +777,6 @@ bool Security::serviceExists()
         false
     );
 }
-
-
-// ============================================================
-// SERVICE ACTIVE
-// ============================================================
 
 bool Security::serviceIsActive()
 {
@@ -955,11 +797,6 @@ bool Security::serviceIsActive()
     return active;
 }
 
-
-// ============================================================
-// FIREWALL SETUP
-// ============================================================
-
 static bool setupSecurityFirewall(
     Security* security)
 {
@@ -977,11 +814,6 @@ static bool setupSecurityFirewall(
     return true;
 }
 
-
-// ============================================================
-// INSTALL SECURITY
-// ============================================================
-
 bool Security::installSecurity()
 {
     std::cout
@@ -989,11 +821,6 @@ bool Security::installSecurity()
         << "========================================\n"
         << " ServerGuard Security Installation\n"
         << "========================================\n\n";
-
-
-    // ========================================================
-    // 1. ROOT / SUDO
-    // ========================================================
 
     if (!checkRootOrSudo())
     {
@@ -1003,11 +830,6 @@ bool Security::installSecurity()
 
         return false;
     }
-
-
-    // ========================================================
-    // 2. REQUIRED COMMANDS
-    // ========================================================
 
     std::cout
         << "Checking server requirements...\n";
@@ -1043,11 +865,6 @@ bool Security::installSecurity()
 
         return false;
     }
-
-
-    // ========================================================
-    // 3. CURL
-    // ========================================================
 
     if (!commandExists("curl"))
     {
@@ -1098,11 +915,6 @@ bool Security::installSecurity()
             << "[OK] curl is already installed.\n";
     }
 
-
-    // ========================================================
-    // 4. UFW
-    // ========================================================
-
     if (!commandExists("ufw"))
     {
         std::cout
@@ -1152,11 +964,6 @@ bool Security::installSecurity()
             << "[OK] UFW is already installed.\n";
     }
 
-
-    // ========================================================
-    // 5. SSHD
-    // ========================================================
-
     if (!commandExists("sshd"))
     {
         std::cout
@@ -1164,11 +971,6 @@ bool Security::installSecurity()
 
         return false;
     }
-
-
-    // ========================================================
-    // 6. DETECT SSH PORTS
-    // ========================================================
 
     std::cout
         << "Detecting SSH ports...\n";
@@ -1252,11 +1054,6 @@ bool Security::installSecurity()
         }
     }
 
-
-    // ========================================================
-    // 7. FALLBACK PORT 22
-    // ========================================================
-
     if (sshPorts.empty())
     {
         std::cout
@@ -1299,11 +1096,6 @@ bool Security::installSecurity()
             return false;
         }
     }
-
-
-    // ========================================================
-    // 8. ALLOW SSH PORTS
-    // ========================================================
 
     std::cout
         << "Detected SSH port(s): ";
@@ -1360,11 +1152,6 @@ bool Security::installSecurity()
         }
     }
 
-
-    // ========================================================
-    // 9. ENABLE UFW
-    // ========================================================
-
     std::cout
         << "Enabling UFW...\n";
 
@@ -1387,11 +1174,6 @@ bool Security::installSecurity()
 
         return false;
     }
-
-
-    // ========================================================
-    // 10. VERIFY UFW
-    // ========================================================
 
     output.clear();
     exitCode = -1;
@@ -1437,11 +1219,6 @@ bool Security::installSecurity()
     std::cout
         << "[OK] UFW is active.\n";
 
-
-    // ========================================================
-    // 11. CREATE SERVERGUARD DIRECTORIES
-    // ========================================================
-
     std::cout
         << "\nCreating ServerGuard directories...\n";
 
@@ -1452,11 +1229,6 @@ bool Security::installSecurity()
 
     std::cout
         << "[OK] Directories created.\n";
-
-
-    // ========================================================
-    // 12. DOWNLOAD SECURITY SCRIPT
-    // ========================================================
 
     std::cout
         << "\nChecking security script...\n";
@@ -1489,10 +1261,6 @@ bool Security::installSecurity()
             << "Downloading brute_force_guard.py "
             "from GitHub...\n";
 
-        // ----------------------------------------------------
-        // Remove old temporary file
-        // ----------------------------------------------------
-
         output.clear();
         exitCode = -1;
 
@@ -1503,11 +1271,6 @@ bool Security::installSecurity()
             exitCode,
             true
         );
-
-
-        // ----------------------------------------------------
-        // Download from GitHub
-        // ----------------------------------------------------
 
         output.clear();
         exitCode = -1;
@@ -1547,11 +1310,6 @@ bool Security::installSecurity()
         std::cout
             << "[OK] Security script downloaded.\n";
 
-
-        // ----------------------------------------------------
-        // Verify downloaded file exists
-        // ----------------------------------------------------
-
         output.clear();
         exitCode = -1;
 
@@ -1576,11 +1334,6 @@ bool Security::installSecurity()
 
             return false;
         }
-
-
-        // ----------------------------------------------------
-        // Verify Python syntax
-        // ----------------------------------------------------
 
         std::cout
             << "Checking downloaded Python script...\n";
@@ -1633,11 +1386,6 @@ bool Security::installSecurity()
                 << output;
         }
 
-
-        // ----------------------------------------------------
-        // Install downloaded script
-        // ----------------------------------------------------
-
         std::cout
             << "Installing security script...\n";
 
@@ -1681,11 +1429,6 @@ bool Security::installSecurity()
             << SECURITY_SCRIPT
             << "\n";
     }
-
-
-    // ========================================================
-    // 13. VERIFY INSTALLED SECURITY SCRIPT
-    // ========================================================
 
     std::cout
         << "Verifying Security script...\n";
@@ -1747,11 +1490,6 @@ bool Security::installSecurity()
             << output;
     }
 
-
-    // ========================================================
-    // 14. SCRIPT PERMISSIONS
-    // ========================================================
-
     if (!setFilePermissions())
     {
         return false;
@@ -1759,11 +1497,6 @@ bool Security::installSecurity()
 
     std::cout
         << "[OK] Security script permissions configured.\n";
-
-
-    // ========================================================
-    // 15. SYSTEMD SERVICE
-    // ========================================================
 
     if (!serviceExists())
     {
@@ -1784,11 +1517,6 @@ bool Security::installSecurity()
             << "[OK] Systemd service already exists.\n";
     }
 
-
-    // ========================================================
-    // 16. SYSTEMD RELOAD
-    // ========================================================
-
     if (!reloadSystemd())
     {
         return false;
@@ -1797,11 +1525,6 @@ bool Security::installSecurity()
     std::cout
         << "[OK] systemd reloaded.\n";
 
-
-    // ========================================================
-    // 17. ENABLE SERVICE
-    // ========================================================
-
     if (!enableService())
     {
         return false;
@@ -1809,11 +1532,6 @@ bool Security::installSecurity()
 
     std::cout
         << "[OK] Automatic startup enabled.\n";
-
-
-    // ========================================================
-    // 18. START SERVICE
-    // ========================================================
 
     if (!startService())
     {
@@ -1846,11 +1564,6 @@ bool Security::installSecurity()
     std::cout
         << "[OK] Security service started.\n";
 
-
-    // ========================================================
-    // 19. FINAL CHECK
-    // ========================================================
-
     if (!serviceIsActive())
     {
         std::cout
@@ -1881,11 +1594,6 @@ bool Security::installSecurity()
         return false;
     }
 
-
-    // ========================================================
-    // SUCCESS
-    // ========================================================
-
     sshSecurity = true;
 
     std::cout
@@ -1915,19 +1623,10 @@ bool Security::installSecurity()
     return true;
 }
 
-// ============================================================
-// SECURITY STATE
-// ============================================================
-
 bool Security::isSSHSecurityEnabled() const
 {
     return sshSecurity;
 }
-
-
-// ============================================================
-// DOWNLOAD SECURITY UPDATE
-// ============================================================
 
 bool Security::downloadSecurityUpdate()
 {
@@ -1937,8 +1636,6 @@ bool Security::downloadSecurityUpdate()
 
     std::string output;
     int exitCode = -1;
-
-    // Remove old temporary file first.
 
     executeRemote(
         "rm -f " +
@@ -2003,11 +1700,6 @@ bool Security::downloadSecurityUpdate()
     return true;
 }
 
-
-// ============================================================
-// VERIFY SECURITY UPDATE
-// ============================================================
-
 bool Security::verifySecurityUpdate()
 {
     std::cout
@@ -2057,11 +1749,6 @@ bool Security::verifySecurityUpdate()
 
     return true;
 }
-
-
-// ============================================================
-// BACKUP CURRENT SECURITY SCRIPT
-// ============================================================
 
 bool Security::backupCurrentSecurityScript()
 {
@@ -2144,11 +1831,6 @@ bool Security::backupCurrentSecurityScript()
     return true;
 }
 
-
-// ============================================================
-// INSTALL UPDATED SECURITY SCRIPT
-// ============================================================
-
 bool Security::installUpdatedSecurityScript()
 {
     std::cout
@@ -2191,11 +1873,6 @@ bool Security::installUpdatedSecurityScript()
 
     return true;
 }
-
-
-// ============================================================
-// VERIFY INSTALLED SECURITY SCRIPT
-// ============================================================
 
 bool Security::verifyInstalledSecurityScript()
 {
@@ -2244,11 +1921,6 @@ bool Security::verifyInstalledSecurityScript()
 
     return true;
 }
-
-
-// ============================================================
-// ROLLBACK SECURITY UPDATE
-// ============================================================
 
 bool Security::rollbackSecurityUpdate()
 {
@@ -2299,11 +1971,6 @@ bool Security::rollbackSecurityUpdate()
     return true;
 }
 
-
-// ============================================================
-// UPDATE SECURITY
-// ============================================================
-
 bool Security::updateSecurity()
 {
     std::cout
@@ -2336,10 +2003,6 @@ bool Security::updateSecurity()
             << ".\n";
     }
 
-    // ========================================================
-    // CHECK CURRENT SCRIPT
-    // ========================================================
-
     std::string output;
     int exitCode = -1;
 
@@ -2359,11 +2022,6 @@ bool Security::updateSecurity()
         return false;
     }
 
-
-    // ========================================================
-    // CHECK PYTHON
-    // ========================================================
-
     if (!commandExists("python3"))
     {
         std::cout
@@ -2371,11 +2029,6 @@ bool Security::updateSecurity()
 
         return false;
     }
-
-
-    // ========================================================
-    // CHECK CURL
-    // ========================================================
 
     if (!commandExists("curl"))
     {
@@ -2424,20 +2077,10 @@ bool Security::updateSecurity()
             << "[OK] curl installed.\n";
     }
 
-
-    // ========================================================
-    // DOWNLOAD
-    // ========================================================
-
     if (!downloadSecurityUpdate())
     {
         return false;
     }
-
-
-    // ========================================================
-    // VERIFY
-    // ========================================================
 
     if (!verifySecurityUpdate())
     {
@@ -2452,11 +2095,6 @@ bool Security::updateSecurity()
         return false;
     }
 
-
-    // ========================================================
-    // BACKUP
-    // ========================================================
-
     if (!backupCurrentSecurityScript())
     {
         executeRemote(
@@ -2470,11 +2108,6 @@ bool Security::updateSecurity()
         return false;
     }
 
-
-    // ========================================================
-    // INSTALL
-    // ========================================================
-
     if (!installUpdatedSecurityScript())
     {
         executeRemote(
@@ -2487,11 +2120,6 @@ bool Security::updateSecurity()
 
         return false;
     }
-
-
-    // ========================================================
-    // VERIFY INSTALLED FILE
-    // ========================================================
 
     if (!verifyInstalledSecurityScript())
     {
@@ -2507,11 +2135,6 @@ bool Security::updateSecurity()
 
         return false;
     }
-
-
-    // ========================================================
-    // RESTART SERVICE
-    // ========================================================
 
     std::cout
         << "[6/7] Restarting Security service...\n";
@@ -2551,11 +2174,6 @@ bool Security::updateSecurity()
 
         return false;
     }
-
-
-    // ========================================================
-    // FINAL SERVICE CHECK
-    // ========================================================
 
     std::cout
         << "[7/7] Checking Security service status...\n";
@@ -2598,11 +2216,6 @@ bool Security::updateSecurity()
         return false;
     }
 
-
-    // ========================================================
-    // CLEAN TEMP
-    // ========================================================
-
     output.clear();
     exitCode = -1;
 
@@ -2613,11 +2226,6 @@ bool Security::updateSecurity()
         exitCode,
         true
     );
-
-
-    // ========================================================
-    // SUCCESS
-    // ========================================================
 
     sshSecurity = true;
 
@@ -2657,11 +2265,6 @@ bool Security::updateSecurity()
     return true;
 }
 
-
-// ============================================================
-// SECURITY MENU
-// ============================================================
-
 void Security::menu()
 {
     while (true)
@@ -2692,22 +2295,12 @@ void Security::menu()
             choice
         );
 
-
-        // ====================================================
-        // INSTALL
-        // ====================================================
-
         if (choice == "1")
         {
             installSecurity();
 
             continue;
         }
-
-
-        // ====================================================
-        // START
-        // ====================================================
 
         if (choice == "2")
         {
@@ -2743,11 +2336,6 @@ void Security::menu()
             continue;
         }
 
-
-        // ====================================================
-        // STOP
-        // ====================================================
-
         if (choice == "3")
         {
             if (!checkRootOrSudo())
@@ -2777,11 +2365,6 @@ void Security::menu()
 
             continue;
         }
-
-
-        // ====================================================
-        // DISABLE STARTUP
-        // ====================================================
 
         if (choice == "4")
         {
@@ -2813,11 +2396,6 @@ void Security::menu()
 
             continue;
         }
-
-
-        // ====================================================
-        // STATUS
-        // ====================================================
 
         if (choice == "5")
         {
@@ -2881,11 +2459,6 @@ void Security::menu()
                     << "Protection status: NOT INSTALLED\n";
             }
 
-
-            // ------------------------------------------------
-            // SCRIPT
-            // ------------------------------------------------
-
             std::string scriptOutput;
             int scriptExitCode = -1;
 
@@ -2904,11 +2477,6 @@ void Security::menu()
                 std::cout
                     << "Security script: MISSING\n";
             }
-
-
-            // ------------------------------------------------
-            // UFW
-            // ------------------------------------------------
 
             if (commandExists("ufw"))
             {
@@ -2946,11 +2514,6 @@ void Security::menu()
 
             continue;
         }
-
-
-        // ====================================================
-        // LOGS
-        // ====================================================
 
         if (choice == "6")
         {
@@ -2995,11 +2558,6 @@ void Security::menu()
             continue;
         }
 
-
-        // ====================================================
-        // UPDATE SECURITY
-        // ====================================================
-
         if (choice == "7")
         {
             std::cout
@@ -3042,30 +2600,15 @@ void Security::menu()
             continue;
         }
 
-
-        // ====================================================
-        // BACK
-        // ====================================================
-
         if (choice == "0")
         {
             break;
         }
 
-
-        // ====================================================
-        // UNKNOWN
-        // ====================================================
-
         std::cout
             << "\nUnknown option.\n";
     }
 }
-
-
-// ============================================================
-// WEB STATUS HELPERS
-// ============================================================
 
 static std::string securityJsonEscape(
     const std::string& value)
@@ -3133,11 +2676,6 @@ static std::string securityJsonEscape(
     return result;
 }
 
-
-// ============================================================
-// WEB INSTALL
-// ============================================================
-
 bool Security::webInstall()
 {
     bool result = installSecurity();
@@ -3151,11 +2689,6 @@ bool Security::webInstall()
         serviceIsActive();
 }
 
-
-// ============================================================
-// WEB START
-// ============================================================
-
 bool Security::webStart()
 {
     if (!checkRootOrSudo())
@@ -3168,9 +2701,6 @@ bool Security::webStart()
         return false;
     }
 
-    // Start does NOT change automatic startup.
-    // This matches the console menu behaviour.
-
     if (!startService())
     {
         return false;
@@ -3178,12 +2708,6 @@ bool Security::webStart()
 
     return serviceIsActive();
 }
-
-
-
-// ============================================================
-// WEB STOP
-// ============================================================
 
 bool Security::webStop()
 {
@@ -3205,12 +2729,6 @@ bool Security::webStop()
     return !serviceIsActive();
 }
 
-
-
-// ============================================================
-// WEB DISABLE
-// ============================================================
-
 bool Security::webDisable()
 {
     if (!checkRootOrSudo())
@@ -3223,37 +2741,13 @@ bool Security::webDisable()
         return false;
     }
 
-    /*
-        IMPORTANT:
-
-        "disable" means:
-        disable automatic startup.
-
-        It does NOT mean:
-        stop the currently running service.
-
-        Therefore we must NOT check !serviceIsActive().
-    */
-
     return disableService();
 }
-
-
-// ============================================================
-// WEB UPDATE
-// ============================================================
 
 bool Security::webUpdate()
 {
     return updateSecurity();
 }
-// ============================================================
-// WEB THREATS
-// ============================================================
-
-// ============================================================
-// WEB THREATS
-// ============================================================
 
 long long Security::webThreats()
 {
@@ -3284,10 +2778,6 @@ long long Security::webThreats()
         return 0;
     }
 
-    // --------------------------------------------------------
-    // Find "blocked"
-    // --------------------------------------------------------
-
     const std::string key =
         "\"blocked\"";
 
@@ -3298,10 +2788,6 @@ long long Security::webThreats()
     {
         return 0;
     }
-
-    // --------------------------------------------------------
-    // Find :
-    // --------------------------------------------------------
 
     size_t colonPosition =
         output.find(
@@ -3314,10 +2800,6 @@ long long Security::webThreats()
         return 0;
     }
 
-    // --------------------------------------------------------
-    // Skip spaces
-    // --------------------------------------------------------
-
     size_t numberStart =
         colonPosition + 1;
 
@@ -3328,14 +2810,9 @@ long long Security::webThreats()
                 output[numberStart]
                 )
         )
-        )
     {
         ++numberStart;
     }
-
-    // --------------------------------------------------------
-    // Read number
-    // --------------------------------------------------------
 
     size_t numberEnd =
         numberStart;
@@ -3372,7 +2849,6 @@ long long Security::webThreats()
     }
 }
 
-
 std::string Security::webStatus()
 {
     bool installed = serviceExists();
@@ -3398,11 +2874,6 @@ std::string Security::webStatus()
             );
     }
 
-
-    // --------------------------------------------------------
-    // Security script
-    // --------------------------------------------------------
-
     bool script = false;
 
     {
@@ -3419,12 +2890,6 @@ std::string Security::webStatus()
             );
     }
 
-
-
-    // --------------------------------------------------------
-    // UFW
-    // --------------------------------------------------------
-
     bool ufwInstalled =
         commandExists("ufw");
 
@@ -3434,11 +2899,6 @@ std::string Security::webStatus()
     {
         std::string output;
         int exitCode = -1;
-
-        /*
-            "ufw status" can require elevated privileges
-            depending on the server configuration.
-        */
 
         if (executeRemote(
             "ufw status | "
@@ -3452,11 +2912,6 @@ std::string Security::webStatus()
         }
         else
         {
-            /*
-                Try again with sudo if the normal check
-                was not permitted.
-            */
-
             output.clear();
             exitCode = -1;
 
@@ -3470,12 +2925,6 @@ std::string Security::webStatus()
                 );
         }
     }
-
-
-
-    // --------------------------------------------------------
-    // SSH ports
-    // --------------------------------------------------------
 
     std::vector<std::string> sshPorts;
 
@@ -3558,13 +3007,6 @@ std::string Security::webStatus()
         }
     }
 
-
-
-
-    // --------------------------------------------------------
-    // JSON
-    // --------------------------------------------------------
-
     std::ostringstream json;
 
     json
@@ -3600,7 +3042,6 @@ std::string Security::webStatus()
 
         << ",\"sshPorts\":[";
 
-
     for (size_t i = 0;
         i < sshPorts.size();
         ++i)
@@ -3623,11 +3064,6 @@ std::string Security::webStatus()
 
     return json.str();
 }
-
-
-// ============================================================
-// WEB LOGS
-// ============================================================
 
 std::string Security::webLogs()
 {
