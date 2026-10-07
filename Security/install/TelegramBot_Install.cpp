@@ -1,18 +1,3 @@
-// ============================================================
-// install/TelegramBot_Install.cpp
-//
-// Категория: УСТАНОВКА бота.
-//
-// Содержит:
-//   - TelegramBot::install()       — полная установка/конфигурация бота
-//   - TelegramBot::webInstall()    — web-обёртка для install()
-//
-// Использует общие хелперы из TelegramBot.cpp (checkRootOrSudo,
-// createDirectories, installPythonDependencies, downloadBot,
-// checkScript, checkPythonSyntax, createConfig, createSystemdService,
-// reloadSystemd, enableService, startService, serviceIsActive и т.д.)
-// ============================================================
-
 #include "../TelegramBot.h"
 #include "../TelegramBotInternal.h"
 
@@ -20,17 +5,11 @@
 #include <thread>
 #include <chrono>
 
-
-// ============================================================
-// INSTALL / CONFIGURE
-// ============================================================
-
 bool TelegramBot::install()
 {
     std::cout << "\n[INSTALL] install() WITHOUT TOKEN\n";
     return installInternal(nullptr);
 }
-
 
 bool TelegramBot::install(
     const std::string& token
@@ -39,7 +18,6 @@ bool TelegramBot::install(
     std::cout << "\n[INSTALL] install(token) WITH TOKEN\n";
     return installInternal(&token);
 }
-
 
 bool TelegramBot::installInternal(
     const std::string* webToken
@@ -61,11 +39,6 @@ bool TelegramBot::installInternal(
 
     std::cout << "========================================\n";
 
-
-    // ========================================================
-    // ROOT / SUDO
-    // ========================================================
-
     if (!checkRootOrSudo())
     {
         std::cout
@@ -74,14 +47,8 @@ bool TelegramBot::installInternal(
         return false;
     }
 
-
-    // ========================================================
-    // REQUIRED COMMANDS
-    // ========================================================
-
     std::cout
         << "Checking required commands...\n";
-
 
     if (!commandExists("systemctl"))
     {
@@ -91,7 +58,6 @@ bool TelegramBot::installInternal(
         return false;
     }
 
-
     if (!commandExists("base64"))
     {
         std::cout
@@ -99,7 +65,6 @@ bool TelegramBot::installInternal(
 
         return false;
     }
-
 
     if (!commandExists("curl"))
     {
@@ -110,7 +75,6 @@ bool TelegramBot::installInternal(
             << "It will be installed with Python dependencies.\n";
     }
 
-
     if (!commandExists("unzip"))
     {
         std::cout
@@ -120,40 +84,20 @@ bool TelegramBot::installInternal(
             << "It will be installed with Python dependencies.\n";
     }
 
-
-    // ========================================================
-    // DIRECTORIES
-    // ========================================================
-
     if (!createDirectories())
     {
         return false;
     }
-
-
-    // ========================================================
-    // PYTHON / VENV / AIOGRAM
-    // ========================================================
 
     if (!installPythonDependencies())
     {
         return false;
     }
 
-
-    // ========================================================
-    // COMPLETE TELEGRAM REPOSITORY
-    // ========================================================
-
     if (!downloadBot())
     {
         return false;
     }
-
-
-    // ========================================================
-    // PYTHON LIBRARIES FROM REPOSITORY
-    // ========================================================
 
     if (!updatePythonLibraries())
     {
@@ -164,11 +108,6 @@ bool TelegramBot::installInternal(
         return false;
     }
 
-
-    // ========================================================
-    // FINAL SCRIPT CHECK
-    // ========================================================
-
     if (!checkScript())
     {
         std::cout
@@ -176,7 +115,6 @@ bool TelegramBot::installInternal(
 
         return false;
     }
-
 
     if (!checkPythonSyntax(TELEGRAM_SCRIPT))
     {
@@ -186,43 +124,23 @@ bool TelegramBot::installInternal(
         return false;
     }
 
-
-    // ========================================================
-    // CONFIG
-    // ========================================================
-
     bool configResult = false;
-
 
     if (webToken != nullptr)
     {
-        // ====================================================
-        // WEB INSTALLATION
-        // ====================================================
-
         configResult =
             createConfig(*webToken);
     }
     else
     {
-        // ====================================================
-        // CONSOLE INSTALLATION
-        // ====================================================
-
         configResult =
             createConfig();
     }
-
 
     if (!configResult)
     {
         return false;
     }
-
-
-    // ========================================================
-    // SERVICE
-    // ========================================================
 
     if (!serviceExists())
     {
@@ -237,62 +155,34 @@ bool TelegramBot::installInternal(
             << "\nTelegram systemd service already exists.\n";
     }
 
-
-    // ========================================================
-    // RELOAD
-    // ========================================================
-
     if (!reloadSystemd())
     {
         return false;
     }
-
-
-    // ========================================================
-    // ENABLE
-    // ========================================================
 
     if (!enableService())
     {
         return false;
     }
 
-
-    // ========================================================
-    // START
-    // ========================================================
-
     if (!startService())
     {
         return false;
     }
 
-
-    // ========================================================
-    // WAIT
-    // ========================================================
-
     std::cout
         << "\nWaiting for Telegram bot...\n";
-
 
     std::this_thread::sleep_for(
         std::chrono::seconds(2)
     );
 
-
-    // ========================================================
-    // CHECK
-    // ========================================================
-
     std::cout
         << "\nChecking Telegram bot service...\n";
-
 
     if (serviceIsActive())
     {
         std::cout << "\n";
-
 
         std::cout
             << "============================================\n";
@@ -303,32 +193,25 @@ bool TelegramBot::installInternal(
         std::cout
             << "============================================\n\n";
 
-
         std::cout
             << "Repository: Lukas6623/ServerGuardTelegram\n";
-
 
         std::cout
             << "Service: "
             << TELEGRAM_SERVICE
             << "\n";
 
-
         std::cout
             << "Status: ACTIVE\n";
-
 
         std::cout
             << "Startup: ENABLED\n";
 
-
         std::cout
             << "Bot: RUNNING\n";
 
-
         std::cout
             << "Python: VIRTUAL ENVIRONMENT\n";
-
 
         if (requirementsExists())
         {
@@ -341,35 +224,24 @@ bool TelegramBot::installInternal(
                 << "Requirements: NOT PRESENT\n";
         }
 
-
         std::cout
             << "aiogram: INSTALLED\n";
-
 
         return true;
     }
 
-
-    // ========================================================
-    // FAILED
-    // ========================================================
-
     std::cout
         << "\nTelegram bot failed to start.\n";
-
 
     std::cout
         << "\nLast service logs:\n";
 
-
     std::cout
         << "--------------------------------------------\n";
-
 
     std::string logs;
 
     int logExitCode = -1;
-
 
     executeRemote(
         "journalctl -u "
@@ -380,24 +252,16 @@ bool TelegramBot::installInternal(
         false
     );
 
-
     if (!logs.empty())
     {
         std::cout << logs;
     }
 
-
     std::cout
         << "--------------------------------------------\n";
 
-
     return false;
 }
-
-
-// ============================================================
-// WEB API - INSTALL
-// ============================================================
 
 bool TelegramBot::webInstall()
 {
