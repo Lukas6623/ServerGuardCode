@@ -20,10 +20,6 @@
 #include <string>
 #include <chrono>
 
-// ============================================================
-// LIMITS
-// ============================================================
-
 static constexpr size_t MAX_HEADER_BYTES = 16 * 1024;
 static constexpr size_t MAX_BODY_BYTES = 64 * 1024;
 static constexpr size_t MAX_FILE_BYTES = 32 * 1024 * 1024;
@@ -31,17 +27,7 @@ static constexpr size_t MAX_CLIENTS = 32;
 
 static constexpr int SOCKET_TIMEOUT_MS = 15000;
 
-
-// ============================================================
-// COOKIE
-// ============================================================
-
 static const char* AUTH_COOKIE = "sg_token";
-
-
-// ============================================================
-// STRING HELPERS
-// ============================================================
 
 static std::string toLower(std::string value)
 {
@@ -57,7 +43,6 @@ static std::string toLower(std::string value)
 
     return value;
 }
-
 
 static std::string trim(const std::string& value)
 {
@@ -88,11 +73,6 @@ static std::string trim(const std::string& value)
     return value.substr(start, end - start);
 }
 
-
-// ============================================================
-// C++17 SUFFIX CHECK
-// ============================================================
-
 static bool hasSuffix(
     const std::string& value,
     const std::string& suffix
@@ -107,11 +87,6 @@ static bool hasSuffix(
         suffix
     ) == 0;
 }
-
-
-// ============================================================
-// CONSTANT-TIME STRING COMPARE
-// ============================================================
 
 static bool safeEquals(
     const std::string& a,
@@ -132,11 +107,6 @@ static bool safeEquals(
 
     return diff == 0;
 }
-
-
-// ============================================================
-// RANDOM TOKEN
-// ============================================================
 
 static std::string generateToken()
 {
@@ -167,11 +137,6 @@ static std::string generateToken()
 
     return output.str();
 }
-
-
-// ============================================================
-// QUERY PARAMETER
-// ============================================================
 
 static std::string queryParam(
     const std::string& query,
@@ -224,11 +189,6 @@ static std::string queryParam(
     return "";
 }
 
-
-// ============================================================
-// HEADER
-// ============================================================
-
 static std::string getHeader(
     const HttpRequest& request,
     const std::string& name
@@ -247,11 +207,6 @@ static std::string getHeader(
 
     return iterator->second;
 }
-
-
-// ============================================================
-// HTTP STATUS
-// ============================================================
 
 static std::string statusText(int status)
 {
@@ -301,11 +256,6 @@ static std::string statusText(int status)
     }
 }
 
-
-// ============================================================
-// ADD OK FIELD TO JSON
-// ============================================================
-
 static std::string addOkToJson(
     const std::string& json,
     bool result
@@ -329,11 +279,6 @@ static std::string addOkToJson(
     return std::string("{\"ok\":") +
         (result ? "true}" : "false}");
 }
-
-
-// ============================================================
-// CONSTRUCTOR
-// ============================================================
 
 WebServer::WebServer(
     const std::string& webRoot,
@@ -368,20 +313,10 @@ WebServer::WebServer(
     );
 }
 
-
-// ============================================================
-// DESTRUCTOR
-// ============================================================
-
 WebServer::~WebServer()
 {
     stop();
 }
-
-
-// ============================================================
-// SSH KEY GUARD SETTER
-// ============================================================
 
 void WebServer::setSSHKeyGuard(
     SSHKeyGuard* guard
@@ -390,22 +325,12 @@ void WebServer::setSSHKeyGuard(
     sshKeyGuard.store(guard);
 }
 
-
-// ============================================================
-// SECURITY SETTER
-// ============================================================
-
 void WebServer::setSecurity(
     Security* securityModule
 )
 {
     security.store(securityModule);
 }
-
-
-// ============================================================
-// SSH HARDENING SETTER
-// ============================================================
 
 void WebServer::setHardening(
     SSHHardening* hardeningModule
@@ -414,22 +339,12 @@ void WebServer::setHardening(
     hardening.store(hardeningModule);
 }
 
-
-// ============================================================
-// TELEGRAM BOT SETTER
-// ============================================================
-
 void WebServer::setTelegramBot(
     TelegramBot* telegramModule
 )
 {
     telegramBot.store(telegramModule);
 }
-
-
-// ============================================================
-// ACCESS URL
-// ============================================================
 
 std::string WebServer::accessUrl() const
 {
@@ -442,18 +357,11 @@ std::string WebServer::accessUrl() const
         token;
 }
 
-
-// ============================================================
-// START
-// ============================================================
-
-
 bool WebServer::start()
 {
     if (running.load())
         return true;
 
-    // Генерируем новый токен доступа
     token = generateToken();
 
     try
@@ -660,11 +568,6 @@ bool WebServer::start()
     return true;
 }
 
-
-// ============================================================
-// STOP
-// ============================================================
-
 void WebServer::stop()
 {
     bool expected = true;
@@ -736,20 +639,10 @@ void WebServer::stop()
         << std::endl;
 }
 
-
-// ============================================================
-// RUNNING
-// ============================================================
-
 bool WebServer::isRunning() const
 {
     return running.load();
 }
-
-
-// ============================================================
-// SERVER LOOP
-// ============================================================
 
 void WebServer::serverLoop()
 {
@@ -848,11 +741,6 @@ void WebServer::serverLoop()
         ).detach();
     }
 }
-
-
-// ============================================================
-// READ REQUEST
-// ============================================================
 
 bool WebServer::readRequest(
     SOCKET clientSocket,
@@ -1137,11 +1025,6 @@ bool WebServer::readRequest(
     }
 }
 
-
-// ============================================================
-// AUTHORIZATION
-// ============================================================
-
 bool WebServer::isAuthorized(
     const HttpRequest& request
 ) const
@@ -1206,11 +1089,6 @@ bool WebServer::isAuthorized(
     return false;
 }
 
-
-// ============================================================
-// HANDLE CLIENT
-// ============================================================
-
 void WebServer::handleClient(
     SOCKET clientSocket
 )
@@ -1236,11 +1114,6 @@ void WebServer::handleClient(
 
         return;
     }
-
-
-    // ========================================================
-    // HOST CHECK
-    // ========================================================
 
     std::string requestHost =
         getHeader(
@@ -1282,11 +1155,6 @@ void WebServer::handleClient(
         }
     }
 
-
-    // ========================================================
-    // ORIGIN CHECK
-    // ========================================================
-
     std::string origin =
         getHeader(
             request,
@@ -1311,11 +1179,6 @@ void WebServer::handleClient(
             return;
         }
     }
-
-
-    // ========================================================
-    // TOKEN EXCHANGE
-    // ========================================================
 
     if (
         request.path == "/" &&
@@ -1367,11 +1230,6 @@ void WebServer::handleClient(
         return;
     }
 
-
-    // ========================================================
-    // AUTH REQUIRED
-    // ========================================================
-
     if (!isAuthorized(request))
     {
         sendJson(
@@ -1382,11 +1240,6 @@ void WebServer::handleClient(
 
         return;
     }
-
-
-    // ========================================================
-    // API
-    // ========================================================
 
     if (
         request.path.rfind(
@@ -1403,21 +1256,11 @@ void WebServer::handleClient(
         return;
     }
 
-
-    // ========================================================
-    // STATIC
-    // ========================================================
-
     serveStatic(
         clientSocket,
         request
     );
 }
-
-
-// ============================================================
-// API ROUTER
-// ============================================================
 
 void WebServer::handleApi(
     SOCKET clientSocket,
@@ -1426,11 +1269,6 @@ void WebServer::handleApi(
 {
     const std::string& path =
         request.path;
-
-
-    // ========================================================
-    // SSH KEY GUARD ALIAS
-    // ========================================================
 
     if (
         path.rfind(
@@ -1455,11 +1293,6 @@ void WebServer::handleApi(
         return;
     }
 
-
-    // ========================================================
-    // SSH KEY GUARD
-    // ========================================================
-
     if (
         path.rfind(
             "/api/ssh-key-guard/",
@@ -1483,11 +1316,6 @@ void WebServer::handleApi(
         return;
     }
 
-
-    // ========================================================
-    // SECURITY
-    // ========================================================
-
     if (
         path.rfind(
             "/api/security/",
@@ -1510,11 +1338,6 @@ void WebServer::handleApi(
 
         return;
     }
-
-
-    // ========================================================
-    // TELEGRAM BOT
-    // ========================================================
 
     if (
         path == "/api/telegram" ||
@@ -1550,11 +1373,6 @@ void WebServer::handleApi(
         return;
     }
 
-
-    // ========================================================
-    // SSH HARDENING
-    // ========================================================
-
     if (
         path == "/api/hardening" ||
         path.rfind(
@@ -1588,11 +1406,6 @@ void WebServer::handleApi(
         return;
     }
 
-
-    // ========================================================
-    // HEALTH
-    // ========================================================
-
     if (
         request.method == "GET" &&
         path == "/api/health"
@@ -1609,7 +1422,6 @@ void WebServer::handleApi(
 
         bool telegramModule =
             telegramBot.load() != nullptr;
-
 
         std::ostringstream json;
 
@@ -1628,7 +1440,6 @@ void WebServer::handleApi(
             << (telegramModule ? "true" : "false")
             << "}";
 
-
         sendJson(
             clientSocket,
             200,
@@ -1638,34 +1449,24 @@ void WebServer::handleApi(
         return;
     }
 
-        // ========================================================
-        // SERVER
-        // ========================================================
+    if (
+        request.method == "GET" &&
+        path == "/api/server"
+        )
+    {
+        sendJson(
+            clientSocket,
+            200,
+            "{"
+            "\"connected\":true,"
+            "\"name\":\"ServerGuard\","
+            "\"host\":\"connected\","
+            "\"status\":\"online\""
+            "}"
+        );
 
-        if (
-            request.method == "GET" &&
-            path == "/api/server"
-            )
-        {
-            sendJson(
-                clientSocket,
-                200,
-                "{"
-                "\"connected\":true,"
-                "\"name\":\"ServerGuard\","
-                "\"host\":\"connected\","
-                "\"status\":\"online\""
-                "}"
-            );
-
-            return;
-        }
-
-
-    // ========================================================
-    // SERVER STATS
-    // GET /api/server/stats
-    // ========================================================
+        return;
+    }
 
     if (
         request.method == "GET" &&
@@ -1676,12 +1477,6 @@ void WebServer::handleApi(
 
         return;
     }
-    
-
-
-    // ========================================================
-    // MODULES
-    // ========================================================
 
     if (
         request.method == "GET" &&
@@ -1700,7 +1495,6 @@ void WebServer::handleApi(
         bool telegramModule =
             telegramBot.load() != nullptr;
 
-
         std::ostringstream json;
 
         json
@@ -1716,7 +1510,6 @@ void WebServer::handleApi(
             << ",\"fileguard\":false"
             << "}";
 
-
         sendJson(
             clientSocket,
             200,
@@ -1726,21 +1519,11 @@ void WebServer::handleApi(
         return;
     }
 
-
-    // ========================================================
-    // DASHBOARD
-    // GET /api/dashboard
-    // ========================================================
-
     if (
         request.method == "GET" &&
         path == "/api/dashboard"
         )
     {
-        // ----------------------------------------------------
-        // MODULES
-        // ----------------------------------------------------
-
         bool sshKeys =
             sshKeyGuard.load() != nullptr;
 
@@ -1753,11 +1536,6 @@ void WebServer::handleApi(
         bool telegramModule =
             telegramBot.load() != nullptr;
 
-
-        // ----------------------------------------------------
-        // CURRENT SERVER CONNECTION
-        // ----------------------------------------------------
-
         int servers = 0;
 
         if (
@@ -1769,11 +1547,6 @@ void WebServer::handleApi(
         {
             servers = 1;
         }
-
-
-        // ----------------------------------------------------
-        // ACTIVE LINKS
-        // ----------------------------------------------------
 
         int links = 0;
 
@@ -1789,11 +1562,6 @@ void WebServer::handleApi(
         if (telegramModule)
             ++links;
 
-
-        // ----------------------------------------------------
-        // THREATS
-        // ----------------------------------------------------
-
         long long threats = 0;
 
         if (securityModule)
@@ -1802,20 +1570,10 @@ void WebServer::handleApi(
                 securityModule->webThreats();
         }
 
-
-        // ----------------------------------------------------
-        // STATUS
-        // ----------------------------------------------------
-
         const char* status =
             servers > 0
             ? "online"
             : "offline";
-
-
-        // ----------------------------------------------------
-        // RESPONSE
-        // ----------------------------------------------------
 
         std::ostringstream json;
 
@@ -1834,7 +1592,6 @@ void WebServer::handleApi(
             << threats
             << "}";
 
-
         sendJson(
             clientSocket,
             200,
@@ -1844,21 +1601,12 @@ void WebServer::handleApi(
         return;
     }
 
-
-    // ========================================================
-    // NOT FOUND
-    // ========================================================
-
     sendJson(
         clientSocket,
         404,
         "{\"error\":\"API endpoint not found\"}"
     );
 }
-
-// ============================================================
-// SSH KEY GUARD API
-// ============================================================
 
 void WebServer::handleSshKeyGuard(
     SOCKET clientSocket,
@@ -1880,19 +1628,9 @@ void WebServer::handleSshKeyGuard(
         return;
     }
 
-
-    // ========================================================
-    // SERIALIZE REMOTE OPERATIONS
-    // ========================================================
-
     std::lock_guard<std::mutex> lock(
         apiMutex
     );
-
-
-    // ========================================================
-    // STATUS
-    // ========================================================
 
     if (action == "status")
     {
@@ -1918,11 +1656,6 @@ void WebServer::handleSshKeyGuard(
 
         return;
     }
-
-
-    // ========================================================
-    // EVENTS
-    // ========================================================
 
     if (action == "events")
     {
@@ -1959,11 +1692,6 @@ void WebServer::handleSshKeyGuard(
         return;
     }
 
-
-    // ========================================================
-    // LOGS
-    // ========================================================
-
     if (action == "logs")
     {
         if (method != "GET")
@@ -1999,11 +1727,6 @@ void WebServer::handleSshKeyGuard(
         return;
     }
 
-
-    // ========================================================
-    // INSTALL
-    // ========================================================
-
     if (action == "install")
     {
         if (method != "POST")
@@ -2037,11 +1760,6 @@ void WebServer::handleSshKeyGuard(
 
         return;
     }
-
-
-    // ========================================================
-    // REMOVE
-    // ========================================================
 
     if (action == "remove")
     {
@@ -2077,11 +1795,6 @@ void WebServer::handleSshKeyGuard(
         return;
     }
 
-
-    // ========================================================
-    // START
-    // ========================================================
-
     if (action == "start")
     {
         if (method != "POST")
@@ -2115,11 +1828,6 @@ void WebServer::handleSshKeyGuard(
 
         return;
     }
-
-
-    // ========================================================
-    // STOP
-    // ========================================================
 
     if (action == "stop")
     {
@@ -2155,11 +1863,6 @@ void WebServer::handleSshKeyGuard(
         return;
     }
 
-
-    // ========================================================
-    // RESTART
-    // ========================================================
-
     if (action == "restart")
     {
         if (method != "POST")
@@ -2194,11 +1897,6 @@ void WebServer::handleSshKeyGuard(
         return;
     }
 
-
-    // ========================================================
-    // BASELINE
-    // ========================================================
-
     if (action == "baseline")
     {
         if (method != "POST")
@@ -2231,11 +1929,6 @@ void WebServer::handleSshKeyGuard(
 
         return;
     }
-
-
-    // ========================================================
-    // SCAN
-    // ========================================================
 
     if (action == "scan")
     {
@@ -2270,11 +1963,6 @@ void WebServer::handleSshKeyGuard(
         return;
     }
 
-
-    // ========================================================
-    // AUDIT
-    // ========================================================
-
     if (action == "audit")
     {
         if (method != "POST")
@@ -2307,11 +1995,6 @@ void WebServer::handleSshKeyGuard(
 
         return;
     }
-
-
-    // ========================================================
-    // UPDATE
-    // ========================================================
 
     if (action == "update")
     {
@@ -2347,22 +2030,12 @@ void WebServer::handleSshKeyGuard(
         return;
     }
 
-
-    // ========================================================
-    // UNKNOWN ENDPOINT
-    // ========================================================
-
     sendJson(
         clientSocket,
         404,
         "{\"error\":\"SSH Key Guard endpoint not found\"}"
     );
 }
-
-
-// ============================================================
-// SECURITY API
-// ============================================================
 
 void WebServer::handleSecurity(
     SOCKET clientSocket,
@@ -2384,19 +2057,9 @@ void WebServer::handleSecurity(
         return;
     }
 
-
-    // ========================================================
-    // SERIALIZE REMOTE OPERATIONS
-    // ========================================================
-
     std::lock_guard<std::mutex> lock(
         apiMutex
     );
-
-
-    // ========================================================
-    // STATUS
-    // ========================================================
 
     if (action == "status")
     {
@@ -2422,11 +2085,6 @@ void WebServer::handleSecurity(
 
         return;
     }
-
-
-    // ========================================================
-    // LOGS
-    // ========================================================
 
     if (action == "logs")
     {
@@ -2463,11 +2121,6 @@ void WebServer::handleSecurity(
         return;
     }
 
-
-    // ========================================================
-    // INSTALL
-    // ========================================================
-
     if (action == "install")
     {
         if (method != "POST")
@@ -2501,11 +2154,6 @@ void WebServer::handleSecurity(
 
         return;
     }
-
-
-    // ========================================================
-    // START
-    // ========================================================
 
     if (action == "start")
     {
@@ -2541,11 +2189,6 @@ void WebServer::handleSecurity(
         return;
     }
 
-
-    // ========================================================
-    // STOP
-    // ========================================================
-
     if (action == "stop")
     {
         if (method != "POST")
@@ -2579,11 +2222,6 @@ void WebServer::handleSecurity(
 
         return;
     }
-
-
-    // ========================================================
-    // DISABLE
-    // ========================================================
 
     if (action == "disable")
     {
@@ -2619,11 +2257,6 @@ void WebServer::handleSecurity(
         return;
     }
 
-
-    // ========================================================
-    // UPDATE
-    // ========================================================
-
     if (action == "update")
     {
         if (method != "POST")
@@ -2658,22 +2291,12 @@ void WebServer::handleSecurity(
         return;
     }
 
-
-    // ========================================================
-    // UNKNOWN ENDPOINT
-    // ========================================================
-
     sendJson(
         clientSocket,
         404,
         "{\"error\":\"Security endpoint not found\"}"
     );
 }
-
-
-// ============================================================
-// SSH HARDENING API
-// ============================================================
 
 void WebServer::handleHardening(
     SOCKET clientSocket,
@@ -2695,19 +2318,9 @@ void WebServer::handleHardening(
         return;
     }
 
-
-    // ========================================================
-    // SERIALIZE REMOTE OPERATIONS
-    // ========================================================
-
     std::lock_guard<std::mutex> lock(
         apiMutex
     );
-
-
-    // ========================================================
-    // STATUS
-    // ========================================================
 
     if (action == "status")
     {
@@ -2734,11 +2347,6 @@ void WebServer::handleHardening(
         return;
     }
 
-
-    // ========================================================
-    // BACKUPS
-    // ========================================================
-
     if (action == "backups")
     {
         if (method != "GET")
@@ -2763,11 +2371,6 @@ void WebServer::handleHardening(
 
         return;
     }
-
-
-    // ========================================================
-    // INSTALL
-    // ========================================================
 
     if (action == "install")
     {
@@ -2803,11 +2406,6 @@ void WebServer::handleHardening(
         return;
     }
 
-
-    // ========================================================
-    // APPLY
-    // ========================================================
-
     if (action == "apply")
     {
         if (method != "POST")
@@ -2841,11 +2439,6 @@ void WebServer::handleHardening(
 
         return;
     }
-
-
-    // ========================================================
-    // VALIDATE
-    // ========================================================
 
     if (action == "validate")
     {
@@ -2881,11 +2474,6 @@ void WebServer::handleHardening(
         return;
     }
 
-
-    // ========================================================
-    // UPDATE
-    // ========================================================
-
     if (action == "update")
     {
         if (method != "POST")
@@ -2919,11 +2507,6 @@ void WebServer::handleHardening(
 
         return;
     }
-
-
-    // ========================================================
-    // REMOVE
-    // ========================================================
 
     if (action == "remove")
     {
@@ -2959,22 +2542,12 @@ void WebServer::handleHardening(
         return;
     }
 
-
-    // ========================================================
-    // UNKNOWN ENDPOINT
-    // ========================================================
-
     sendJson(
         clientSocket,
         404,
         "{\"error\":\"SSH Hardening endpoint not found\"}"
     );
 }
-
-
-// ============================================================
-// TELEGRAM BOT API
-// ============================================================
 
 void WebServer::handleTelegramBot(
     SOCKET clientSocket,
@@ -2997,20 +2570,9 @@ void WebServer::handleTelegramBot(
         return;
     }
 
-
-    // ========================================================
-    // SERIALIZE REMOTE OPERATIONS
-    // ========================================================
-
     std::lock_guard<std::mutex> lock(
         apiMutex
     );
-
-
-    // ========================================================
-    // STATUS
-    // GET /api/telegram/status
-    // ========================================================
 
     if (action == "status")
     {
@@ -3036,12 +2598,6 @@ void WebServer::handleTelegramBot(
 
         return;
     }
-
-
-    // ========================================================
-    // LOGS
-    // GET /api/telegram/logs
-    // ========================================================
 
     if (action == "logs")
     {
@@ -3078,12 +2634,6 @@ void WebServer::handleTelegramBot(
         return;
     }
 
-
-    // ========================================================
-    // INSTALL
-    // POST /api/telegram/install
-    // ========================================================
-
     if (action == "install")
     {
         if (method != "POST")
@@ -3096,11 +2646,6 @@ void WebServer::handleTelegramBot(
 
             return;
         }
-
-
-        // ====================================================
-        // READ TOKEN FROM JSON BODY
-        // ====================================================
 
         std::string token;
 
@@ -3148,11 +2693,6 @@ void WebServer::handleTelegramBot(
             }
         }
 
-
-        // ====================================================
-        // VALIDATE TOKEN
-        // ====================================================
-
         if (token.empty())
         {
             sendJson(
@@ -3164,29 +2704,14 @@ void WebServer::handleTelegramBot(
             return;
         }
 
-
-        // ====================================================
-        // DEBUG
-        // ====================================================
-
         std::cout
             << "\n[WEB TELEGRAM INSTALL]\n";
 
         std::cout
             << "Token received from web: YES\n";
 
-
-        // ====================================================
-        // INSTALL WITH WEB TOKEN
-        // ====================================================
-
         bool result =
             bot->webInstall(token);
-
-
-        // ====================================================
-        // GET STATUS
-        // ====================================================
 
         std::string status =
             bot->webStatus();
@@ -3197,11 +2722,6 @@ void WebServer::handleTelegramBot(
                 result
             );
 
-
-        // ====================================================
-        // RESPONSE
-        // ====================================================
-
         sendJson(
             clientSocket,
             result ? 200 : 500,
@@ -3210,12 +2730,6 @@ void WebServer::handleTelegramBot(
 
         return;
     }
-
-
-    // ========================================================
-    // START
-    // POST /api/telegram/start
-    // ========================================================
 
     if (action == "start")
     {
@@ -3251,12 +2765,6 @@ void WebServer::handleTelegramBot(
         return;
     }
 
-
-    // ========================================================
-    // STOP
-    // POST /api/telegram/stop
-    // ========================================================
-
     if (action == "stop")
     {
         if (method != "POST")
@@ -3290,12 +2798,6 @@ void WebServer::handleTelegramBot(
 
         return;
     }
-
-
-    // ========================================================
-    // RESTART
-    // POST /api/telegram/restart
-    // ========================================================
 
     if (action == "restart")
     {
@@ -3331,12 +2833,6 @@ void WebServer::handleTelegramBot(
         return;
     }
 
-
-    // ========================================================
-    // DISABLE
-    // POST /api/telegram/disable
-    // ========================================================
-
     if (action == "disable")
     {
         if (method != "POST")
@@ -3370,12 +2866,6 @@ void WebServer::handleTelegramBot(
 
         return;
     }
-
-
-    // ========================================================
-    // UPDATE
-    // POST /api/telegram/update
-    // ========================================================
 
     if (action == "update")
     {
@@ -3411,12 +2901,6 @@ void WebServer::handleTelegramBot(
         return;
     }
 
-
-    // ========================================================
-    // GENERATE VERIFICATION CODE
-    // POST /api/telegram/generate-code
-    // ========================================================
-
     if (action == "generate-code")
     {
         if (method != "POST")
@@ -3449,12 +2933,6 @@ void WebServer::handleTelegramBot(
 
         return;
     }
-
-
-    // ========================================================
-    // REMOVE
-    // POST /api/telegram/remove
-    // ========================================================
 
     if (action == "remove")
     {
@@ -3490,22 +2968,12 @@ void WebServer::handleTelegramBot(
         return;
     }
 
-
-    // ========================================================
-    // UNKNOWN ENDPOINT
-    // ========================================================
-
     sendJson(
         clientSocket,
         404,
         "{\"error\":\"Telegram Bot endpoint not found\"}"
     );
 }
-
-
-// ============================================================
-// STATIC FILE SERVER
-// ============================================================
 
 void WebServer::serveStatic(
     SOCKET clientSocket,
@@ -3537,11 +3005,6 @@ void WebServer::serveStatic(
     {
         decoded = "/index.html";
     }
-
-
-    // ========================================================
-    // PATH SECURITY
-    // ========================================================
 
     if (
         decoded.find("..") != std::string::npos ||
@@ -3711,11 +3174,6 @@ void WebServer::serveStatic(
     }
 }
 
-
-// ============================================================
-// SEND RESPONSE
-// ============================================================
-
 void WebServer::sendResponse(
     SOCKET clientSocket,
     int status,
@@ -3806,11 +3264,6 @@ void WebServer::sendResponse(
     }
 }
 
-
-// ============================================================
-// SEND JSON
-// ============================================================
-
 void WebServer::sendJson(
     SOCKET clientSocket,
     int status,
@@ -3824,11 +3277,6 @@ void WebServer::sendJson(
         json
     );
 }
-
-
-// ============================================================
-// CONTENT TYPE
-// ============================================================
 
 std::string WebServer::getContentType(
     const std::string& path
@@ -3933,11 +3381,6 @@ std::string WebServer::getContentType(
     return "application/octet-stream";
 }
 
-
-// ============================================================
-// URL DECODE
-// ============================================================
-
 std::string WebServer::urlDecode(
     const std::string& value
 )
@@ -4029,11 +3472,6 @@ std::string WebServer::urlDecode(
     return result;
 }
 
-
-// ============================================================
-// JSON ESCAPE
-// ============================================================
-
 std::string WebServer::jsonEscape(
     const std::string& value
 )
@@ -4100,11 +3538,6 @@ std::string WebServer::jsonEscape(
     return output.str();
 }
 
-
-// ============================================================
-// EXECUTE SSH COMMAND
-// ============================================================
-
 bool WebServer::executeSshCommand(
     const std::string& command,
     std::string& output
@@ -4115,14 +3548,7 @@ bool WebServer::executeSshCommand(
     if (!session)
         return false;
 
-
-    /*
-     * Все SSH-операции через WebServer используют
-     * общий mutex, потому что один libssh2 session
-     * используется несколькими модулями.
-     */
     std::lock_guard<std::mutex> lock(apiMutex);
-
 
     LIBSSH2_CHANNEL* channel =
         libssh2_channel_open_session(session);
@@ -4131,7 +3557,6 @@ bool WebServer::executeSshCommand(
     {
         return false;
     }
-
 
     if (
         libssh2_channel_exec(
@@ -4145,9 +3570,7 @@ bool WebServer::executeSshCommand(
         return false;
     }
 
-
     char buffer[8192];
-
 
     while (true)
     {
@@ -4157,7 +3580,6 @@ bool WebServer::executeSshCommand(
                 buffer,
                 sizeof(buffer) - 1
             );
-
 
         if (rc > 0)
         {
@@ -4171,21 +3593,15 @@ bool WebServer::executeSshCommand(
             continue;
         }
 
-
         if (rc == 0)
         {
             break;
         }
 
-
-        /*
-         * Ошибка чтения SSH-канала.
-         */
         libssh2_channel_free(channel);
 
         return false;
     }
-
 
     libssh2_channel_send_eof(channel);
 
@@ -4193,34 +3609,20 @@ bool WebServer::executeSshCommand(
 
     libssh2_channel_wait_closed(channel);
 
-
     int exitCode =
         libssh2_channel_get_exit_status(
             channel
         );
 
-
     libssh2_channel_free(channel);
-
 
     return exitCode == 0;
 }
-
-
-
-// ============================================================
-// SERVER STATISTICS
-// ============================================================
 
 void WebServer::handleServerStats(
     SOCKET clientSocket
 )
 {
-    /*
-     * Получаем основные данные Linux-сервера
-     * через существующее SSH-соединение.
-     */
-
     const std::string command =
         "printf '__HOSTNAME__\\n'; "
         "hostname 2>/dev/null; "
@@ -4265,9 +3667,7 @@ void WebServer::handleServerStats(
         "printf '__PROCESSES__\\n'; "
         "ps -e --no-headers 2>/dev/null | wc -l";
 
-
     std::string output;
-
 
     if (
         !executeSshCommand(
@@ -4285,18 +3685,12 @@ void WebServer::handleServerStats(
         return;
     }
 
-
-    // ========================================================
-    // PARSE RESPONSE
-    // ========================================================
-
     std::map<std::string, std::string> values;
 
     std::istringstream stream(output);
 
     std::string line;
     std::string currentKey;
-
 
     while (std::getline(stream, line))
     {
@@ -4307,7 +3701,6 @@ void WebServer::handleServerStats(
         {
             line.pop_back();
         }
-
 
         if (
             line.size() > 4 &&
@@ -4320,7 +3713,6 @@ void WebServer::handleServerStats(
             continue;
         }
 
-
         if (!currentKey.empty())
         {
             values[currentKey] = line;
@@ -4328,11 +3720,6 @@ void WebServer::handleServerStats(
             currentKey.clear();
         }
     }
-
-
-    // ========================================================
-    // VALUES
-    // ========================================================
 
     std::string hostname =
         values["__HOSTNAME__"];
@@ -4370,11 +3757,6 @@ void WebServer::handleServerStats(
     std::string processes =
         values["__PROCESSES__"];
 
-
-    // ========================================================
-    // CPU USAGE
-    // ========================================================
-
     unsigned long long cpuUser = 0;
     unsigned long long cpuNice = 0;
     unsigned long long cpuSystem = 0;
@@ -4383,7 +3765,6 @@ void WebServer::handleServerStats(
     unsigned long long cpuIrq = 0;
     unsigned long long cpuSoftIrq = 0;
     unsigned long long cpuSteal = 0;
-
 
     {
         std::istringstream cpuStream(cpuStat);
@@ -4402,10 +3783,8 @@ void WebServer::handleServerStats(
             >> cpuSteal;
     }
 
-
     unsigned long long cpuIdleTotal =
         cpuIdle + cpuIowait;
-
 
     unsigned long long cpuTotal =
         cpuUser +
@@ -4417,9 +3796,7 @@ void WebServer::handleServerStats(
         cpuSoftIrq +
         cpuSteal;
 
-
     double cpuPercent = 0.0;
-
 
     if (
         previousCpuTotal > 0 &&
@@ -4432,7 +3809,6 @@ void WebServer::handleServerStats(
 
         unsigned long long idleDelta =
             cpuIdleTotal - previousCpuIdle;
-
 
         if (totalDelta > 0)
         {
@@ -4447,27 +3823,18 @@ void WebServer::handleServerStats(
         }
     }
 
-
     previousCpuTotal = cpuTotal;
     previousCpuIdle = cpuIdleTotal;
 
-
-    // Защита от некорректных значений
     if (cpuPercent < 0.0)
         cpuPercent = 0.0;
 
     if (cpuPercent > 100.0)
         cpuPercent = 100.0;
 
-
-    // ========================================================
-    // MEMORY
-    // ========================================================
-
     unsigned long long memTotal = 0;
     unsigned long long memUsed = 0;
     unsigned long long memAvailable = 0;
-
 
     {
         std::istringstream memStream(memory);
@@ -4478,18 +3845,10 @@ void WebServer::handleServerStats(
             >> memAvailable;
     }
 
-
     double memoryPercent = 0.0;
-
 
     if (memTotal > 0)
     {
-        /*
-         * Используем MemAvailable.
-         * Это более корректная оценка использования
-         * памяти Linux.
-         */
-
         memoryPercent =
             (
                 1.0 -
@@ -4500,22 +3859,15 @@ void WebServer::handleServerStats(
                 ) * 100.0;
     }
 
-
     if (memoryPercent < 0.0)
         memoryPercent = 0.0;
 
     if (memoryPercent > 100.0)
         memoryPercent = 100.0;
 
-
-    // ========================================================
-    // DISK
-    // ========================================================
-
     unsigned long long diskTotal = 0;
     unsigned long long diskUsed = 0;
     unsigned long long diskAvailable = 0;
-
 
     {
         std::istringstream diskStream(disk);
@@ -4526,9 +3878,7 @@ void WebServer::handleServerStats(
             >> diskAvailable;
     }
 
-
     double diskPercent = 0.0;
-
 
     if (diskTotal > 0)
     {
@@ -4539,14 +3889,8 @@ void WebServer::handleServerStats(
                 ) * 100.0;
     }
 
-
-    // ========================================================
-    // NETWORK TOTAL
-    // ========================================================
-
     unsigned long long networkRx = 0;
     unsigned long long networkTx = 0;
-
 
     {
         std::istringstream networkStream(network);
@@ -4556,14 +3900,8 @@ void WebServer::handleServerStats(
             >> networkTx;
     }
 
-
-    // ========================================================
-    // NETWORK SPEED
-    // ========================================================
-
     const auto now =
         std::chrono::steady_clock::now();
-
 
     const long long currentNetworkTimeMs =
         std::chrono::duration_cast<
@@ -4572,15 +3910,8 @@ void WebServer::handleServerStats(
             now.time_since_epoch()
         ).count();
 
-
     double networkRxSpeed = 0.0;
     double networkTxSpeed = 0.0;
-
-
-    /*
-     * Первое измерение используется только
-     * для создания начальной точки.
-     */
 
     if (
         previousNetworkTimeMs > 0 &&
@@ -4595,7 +3926,6 @@ void WebServer::handleServerStats(
                 previousNetworkTimeMs
                 ) / 1000.0;
 
-
         if (seconds > 0.0)
         {
             networkRxSpeed =
@@ -4603,7 +3933,6 @@ void WebServer::handleServerStats(
                     networkRx -
                     previousNetworkRx
                     ) / seconds;
-
 
             networkTxSpeed =
                 static_cast<double>(
@@ -4613,22 +3942,11 @@ void WebServer::handleServerStats(
         }
     }
 
-
-    /*
-     * Сохраняем текущее измерение.
-     */
-
     previousNetworkRx = networkRx;
     previousNetworkTx = networkTx;
     previousNetworkTimeMs = currentNetworkTimeMs;
 
-
-    // ========================================================
-    // JSON
-    // ========================================================
-
     std::ostringstream json;
-
 
     json
         << "{"
@@ -4636,11 +3954,6 @@ void WebServer::handleServerStats(
         << "\"connected\":true"
 
         << ",\"status\":\"online\""
-
-
-        // ----------------------------------------------------
-        // SERVER
-        // ----------------------------------------------------
 
         << ",\"hostname\":\""
         << jsonEscape(hostname)
@@ -4658,11 +3971,6 @@ void WebServer::handleServerStats(
         << jsonEscape(kernel)
         << "\""
 
-
-        // ----------------------------------------------------
-        // CPU
-        // ----------------------------------------------------
-
         << ",\"cpu_model\":\""
         << jsonEscape(cpuModel)
         << "\""
@@ -4679,22 +3987,12 @@ void WebServer::handleServerStats(
         << std::setprecision(1)
         << cpuPercent
 
-
-        // ----------------------------------------------------
-        // LOAD
-        // ----------------------------------------------------
-
         << ",\"load1\":"
         << (
             load.empty()
             ? "0"
             : load
             )
-
-
-        // ----------------------------------------------------
-        // MEMORY
-        // ----------------------------------------------------
 
         << ",\"memory_total\":"
         << memTotal
@@ -4710,11 +4008,6 @@ void WebServer::handleServerStats(
         << std::setprecision(1)
         << memoryPercent
 
-
-        // ----------------------------------------------------
-        // DISK
-        // ----------------------------------------------------
-
         << ",\"disk_total\":"
         << diskTotal
 
@@ -4729,22 +4022,12 @@ void WebServer::handleServerStats(
         << std::setprecision(1)
         << diskPercent
 
-
-        // ----------------------------------------------------
-        // UPTIME
-        // ----------------------------------------------------
-
         << ",\"uptime\":"
         << (
             uptime.empty()
             ? "0"
             : uptime
             )
-
-
-        // ----------------------------------------------------
-        // NETWORK TOTAL
-        // ----------------------------------------------------
 
         << ",\"network_rx\":"
         << networkRx
@@ -4754,11 +4037,6 @@ void WebServer::handleServerStats(
 
         << ",\"network\":"
         << (networkRx + networkTx)
-
-
-        // ----------------------------------------------------
-        // NETWORK SPEED
-        // ----------------------------------------------------
 
         << ",\"network_rx_speed\":"
         << std::fixed
@@ -4770,11 +4048,6 @@ void WebServer::handleServerStats(
         << std::setprecision(1)
         << networkTxSpeed
 
-
-        // ----------------------------------------------------
-        // PROCESSES
-        // ----------------------------------------------------
-
         << ",\"processes\":"
         << (
             processes.empty()
@@ -4782,9 +4055,7 @@ void WebServer::handleServerStats(
             : processes
             )
 
-
         << "}";
-
 
     sendJson(
         clientSocket,
