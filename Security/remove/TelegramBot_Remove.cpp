@@ -1,33 +1,15 @@
-// ============================================================
-// remove/TelegramBot_Remove.cpp
-//
-// Категория: УДАЛЕНИЕ бота.
-//
-// Содержит:
-//   - TelegramBot::removeInstallation()  — полное удаление сервиса,
-//                                           unit-файла, папки бота и бэкапа
-//   - TelegramBot::webRemove()           — web-обёртка
-// ============================================================
-
 #include "../TelegramBot.h"
 #include "../TelegramBotInternal.h"
 
 #include <iostream>
 
-
-// ============================================================
-// REMOVE INSTALLATION
-// ============================================================
-
 bool TelegramBot::removeInstallation()
 {
     std::cout << "\nRemoving Telegram bot...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     std::string command =
         "systemctl stop " +
@@ -46,7 +28,6 @@ bool TelegramBot::removeInstallation()
         "rm -rf " +
         shellQuote(TELEGRAM_CODE_BACKUP);
 
-
     if (!executeRemote(command, output, exitCode, true))
     {
         std::cout << "Failed to remove Telegram bot.\n";
@@ -54,17 +35,10 @@ bool TelegramBot::removeInstallation()
         return false;
     }
 
-
     std::cout << "Telegram bot removed.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// WEB API - REMOVE
-// ============================================================
 
 bool TelegramBot::webRemove()
 {
