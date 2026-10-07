@@ -25,10 +25,6 @@ private:
     LIBSSH2_SESSION* session;
     std::string sudoPassword;
 
-    // ========================================================
-    // REMOTE COMMANDS
-    // ========================================================
-
     bool executeRemote(
         const std::string& command,
         std::string* output = nullptr
@@ -39,10 +35,6 @@ private:
     bool commandExists(
         const std::string& command
     );
-
-    // ========================================================
-    // INSTALLATION
-    // ========================================================
 
     bool createDirectories();
     bool setPermissions();
@@ -58,10 +50,6 @@ private:
     bool serviceExists();
     bool serviceIsActive();
 
-    // ========================================================
-    // UPDATE
-    // ========================================================
-
     bool update();
 
     bool downloadUpdate();
@@ -73,10 +61,6 @@ private:
     bool installUpdatedScript();
 
     bool rollbackUpdate();
-
-    // ========================================================
-    // INFORMATION
-    // ========================================================
 
     void printStatus();
     void printLogs();
