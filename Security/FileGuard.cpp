@@ -7,10 +7,6 @@
 #include <string>
 
 
-// ============================================================
-// CONFIGURATION
-// ============================================================
-
 static const std::string FILEGUARD_DATA_DIR =
 "/opt/serverguard/data";
 
@@ -23,10 +19,6 @@ static const std::string FILEGUARD_SERVICE =
 static const std::string FILEGUARD_SERVICE_PATH =
 "/etc/systemd/system/serverguard-fileguard.service";
 
-
-// ============================================================
-// UPDATE CONFIGURATION
-// ============================================================
 
 static const std::string FILEGUARD_UPDATE_URL =
 "https://raw.githubusercontent.com/"
@@ -41,10 +33,6 @@ static const std::string FILEGUARD_BACKUP_DIR =
 static const std::string FILEGUARD_BACKUP_SCRIPT =
 "/opt/serverguard/backups/fileguard/file_guard.py";
 
-
-// ============================================================
-// SHELL QUOTE
-// ============================================================
 
 static std::string shellQuote(
     const std::string& value)
@@ -69,10 +57,6 @@ static std::string shellQuote(
 }
 
 
-// ============================================================
-// CONSTRUCTOR
-// ============================================================
-
 FileGuard::FileGuard(
     LIBSSH2_SESSION* session,
     const std::string& sudoPassword)
@@ -81,10 +65,6 @@ FileGuard::FileGuard(
     sudoPassword(sudoPassword)
 {}
 
-
-// ============================================================
-// EXECUTE REMOTE COMMAND
-// ============================================================
 
 bool FileGuard::executeRemote(
     const std::string& command,
@@ -114,10 +94,6 @@ bool FileGuard::executeRemote(
     std::string finalCommand =
         command;
 
-
-    // ========================================================
-    // SUDO
-    // ========================================================
 
     if (!sudoPassword.empty())
     {
@@ -216,10 +192,6 @@ bool FileGuard::executeRemote(
     }
 
 
-    // ========================================================
-    // EXECUTE
-    // ========================================================
-
     if (libssh2_channel_exec(
         channel,
         finalCommand.c_str()) != 0)
@@ -237,10 +209,6 @@ bool FileGuard::executeRemote(
 
     std::string result;
 
-
-    // ========================================================
-    // STDOUT
-    // ========================================================
 
     while (true)
     {
@@ -262,10 +230,6 @@ bool FileGuard::executeRemote(
         }
     }
 
-
-    // ========================================================
-    // STDERR
-    // ========================================================
 
     while (true)
     {
@@ -312,10 +276,6 @@ bool FileGuard::executeRemote(
     return exitCode == 0;
 }
 
-
-// ============================================================
-// ROOT / SUDO CHECK
-// ============================================================
 
 bool FileGuard::checkRootOrSudo()
 {
@@ -378,10 +338,6 @@ bool FileGuard::checkRootOrSudo()
 }
 
 
-// ============================================================
-// COMMAND EXISTS
-// ============================================================
-
 bool FileGuard::commandExists(
     const std::string& command)
 {
@@ -396,10 +352,6 @@ bool FileGuard::commandExists(
 }
 
 
-// ============================================================
-// CREATE DIRECTORIES
-// ============================================================
-
 bool FileGuard::createDirectories()
 {
     std::cout
@@ -411,10 +363,6 @@ bool FileGuard::createDirectories()
         shellQuote(FILEGUARD_DATA_DIR));
 }
 
-
-// ============================================================
-// SET PERMISSIONS
-// ============================================================
 
 bool FileGuard::setPermissions()
 {
@@ -458,10 +406,6 @@ bool FileGuard::setPermissions()
 }
 
 
-// ============================================================
-// CREATE SYSTEMD SERVICE
-// ============================================================
-
 bool FileGuard::createSystemdService()
 {
     std::cout
@@ -493,10 +437,6 @@ NoNewPrivileges=false
 WantedBy=multi-user.target
 )";
 
-
-    // ========================================================
-    // BASE64 ENCODE SERVICE
-    // ========================================================
 
     const std::string alphabet =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -580,10 +520,6 @@ WantedBy=multi-user.target
     }
 
 
-    // ========================================================
-    // WRITE SERVICE
-    // ========================================================
-
     std::string command =
         "echo " +
         shellQuote(encoded) +
@@ -609,10 +545,6 @@ WantedBy=multi-user.target
 }
 
 
-// ============================================================
-// RELOAD SYSTEMD
-// ============================================================
-
 bool FileGuard::reloadSystemd()
 {
     std::cout
@@ -623,10 +555,6 @@ bool FileGuard::reloadSystemd()
         "systemctl daemon-reload");
 }
 
-
-// ============================================================
-// ENABLE SERVICE
-// ============================================================
 
 bool FileGuard::enableService()
 {
@@ -640,10 +568,6 @@ bool FileGuard::enableService()
 }
 
 
-// ============================================================
-// START SERVICE
-// ============================================================
-
 bool FileGuard::startService()
 {
     std::cout
@@ -656,10 +580,6 @@ bool FileGuard::startService()
 }
 
 
-// ============================================================
-// STOP SERVICE
-// ============================================================
-
 bool FileGuard::stopService()
 {
     return executeRemote(
@@ -668,10 +588,6 @@ bool FileGuard::stopService()
 }
 
 
-// ============================================================
-// DISABLE SERVICE
-// ============================================================
-
 bool FileGuard::disableService()
 {
     return executeRemote(
@@ -679,10 +595,6 @@ bool FileGuard::disableService()
         shellQuote(FILEGUARD_SERVICE));
 }
 
-
-// ============================================================
-// SERVICE EXISTS
-// ============================================================
 
 bool FileGuard::serviceExists()
 {
@@ -698,10 +610,6 @@ bool FileGuard::serviceExists()
 }
 
 
-// ============================================================
-// SERVICE IS ACTIVE
-// ============================================================
-
 bool FileGuard::serviceIsActive()
 {
     std::string output;
@@ -714,10 +622,6 @@ bool FileGuard::serviceIsActive()
 }
 
 
-// ============================================================
-// INSTALL
-// ============================================================
-
 bool FileGuard::install()
 {
     std::cout
@@ -726,19 +630,11 @@ bool FileGuard::install()
         << "========================================\n\n";
 
 
-    // ========================================================
-    // ROOT / SUDO
-    // ========================================================
-
     if (!checkRootOrSudo())
     {
         return false;
     }
 
-
-    // ========================================================
-    // PYTHON
-    // ========================================================
 
     std::cout
         << "[1/8] Checking Python3...\n";
@@ -752,10 +648,6 @@ bool FileGuard::install()
     }
 
 
-    // ========================================================
-    // SYSTEMCTL
-    // ========================================================
-
     std::cout
         << "[2/8] Checking systemd...\n";
 
@@ -768,10 +660,6 @@ bool FileGuard::install()
     }
 
 
-    // ========================================================
-    // BASE64
-    // ========================================================
-
     std::cout
         << "[3/8] Checking base64...\n";
 
@@ -783,10 +671,6 @@ bool FileGuard::install()
         return false;
     }
 
-
-    // ========================================================
-    // CURL
-    // ========================================================
 
     std::cout
         << "[4/8] Checking curl...\n";
@@ -818,7 +702,6 @@ bool FileGuard::install()
             return false;
         }
 
-        // Check again after installation
         if (!commandExists("curl"))
         {
             std::cout
@@ -828,10 +711,6 @@ bool FileGuard::install()
         }
     }
 
-
-    // ========================================================
-    // CREATE DIRECTORIES
-    // ========================================================
 
     std::cout
         << "[5/8] Creating directories...\n";
@@ -849,14 +728,9 @@ bool FileGuard::install()
     }
 
 
-    // ========================================================
-    // DOWNLOAD FILEGUARD SCRIPT
-    // ========================================================
-
     std::cout
         << "[6/8] Downloading FileGuard script...\n";
 
-    // Remove possible broken/old temporary files
     executeRemote(
         "rm -f " +
         shellQuote(FILEGUARD_TEMP_SCRIPT));
@@ -898,10 +772,6 @@ bool FileGuard::install()
     }
 
 
-    // ========================================================
-    // CHECK DOWNLOADED FILE
-    // ========================================================
-
     if (!executeRemote(
         "test -s " +
         shellQuote(FILEGUARD_TEMP_SCRIPT)))
@@ -916,10 +786,6 @@ bool FileGuard::install()
         return false;
     }
 
-
-    // ========================================================
-    // CHECK PYTHON SYNTAX
-    // ========================================================
 
     std::cout
         << "Checking FileGuard Python syntax...\n";
@@ -967,10 +833,6 @@ bool FileGuard::install()
     }
 
 
-    // ========================================================
-    // INSTALL SCRIPT
-    // ========================================================
-
     std::cout
         << "Installing FileGuard script...\n";
 
@@ -990,10 +852,6 @@ bool FileGuard::install()
         return false;
     }
 
-
-    // ========================================================
-    // PERMISSIONS
-    // ========================================================
 
     std::cout
         << "[7/8] Setting permissions...\n";
@@ -1042,10 +900,6 @@ bool FileGuard::install()
     }
 
 
-    // ========================================================
-    // SYSTEMD SERVICE
-    // ========================================================
-
     std::cout
         << "[8/8] Installing systemd service...\n";
 
@@ -1069,10 +923,6 @@ NoNewPrivileges=false
 WantedBy=multi-user.target
 )";
 
-
-    // ========================================================
-    // BASE64 ENCODE SERVICE
-    // ========================================================
 
     const std::string alphabet =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -1154,10 +1004,6 @@ WantedBy=multi-user.target
     }
 
 
-    // ========================================================
-    // WRITE SYSTEMD SERVICE
-    // ========================================================
-
     const std::string serviceCommand =
         "echo " +
         shellQuote(encoded) +
@@ -1174,10 +1020,6 @@ WantedBy=multi-user.target
     }
 
 
-    // ========================================================
-    // SERVICE PERMISSIONS
-    // ========================================================
-
     if (!executeRemote(
         "chmod 644 " +
         shellQuote(FILEGUARD_SERVICE_PATH)))
@@ -1188,10 +1030,6 @@ WantedBy=multi-user.target
         return false;
     }
 
-
-    // ========================================================
-    // SYSTEMD DAEMON RELOAD
-    // ========================================================
 
     std::cout
         << "Reloading systemd...\n";
@@ -1206,10 +1044,6 @@ WantedBy=multi-user.target
     }
 
 
-    // ========================================================
-    // ENABLE SERVICE
-    // ========================================================
-
     std::cout
         << "Enabling FileGuard service...\n";
 
@@ -1223,10 +1057,6 @@ WantedBy=multi-user.target
         return false;
     }
 
-
-    // ========================================================
-    // START SERVICE
-    // ========================================================
 
     std::cout
         << "Starting FileGuard service...\n";
@@ -1252,16 +1082,8 @@ WantedBy=multi-user.target
     }
 
 
-    // ========================================================
-    // WAIT FOR SYSTEMD
-    // ========================================================
-
     executeRemote("sleep 1");
 
-
-    // ========================================================
-    // CHECK STATUS
-    // ========================================================
 
     std::string statusOutput;
 
@@ -1313,10 +1135,6 @@ WantedBy=multi-user.target
     }
 
 
-    // ========================================================
-    // FINAL SUCCESS
-    // ========================================================
-
     std::cout
         << "\n========================================\n"
         << "FileGuard installed successfully.\n"
@@ -1332,9 +1150,7 @@ WantedBy=multi-user.target
 
     return true;
 }
-// ============================================================
-// START
-// ============================================================
+
 
 bool FileGuard::start()
 {
@@ -1383,10 +1199,6 @@ bool FileGuard::start()
 }
 
 
-// ============================================================
-// STOP
-// ============================================================
-
 bool FileGuard::stop()
 {
     std::cout
@@ -1425,10 +1237,6 @@ bool FileGuard::stop()
 }
 
 
-// ============================================================
-// DISABLE
-// ============================================================
-
 bool FileGuard::disable()
 {
     std::cout
@@ -1450,7 +1258,6 @@ bool FileGuard::disable()
     }
 
 
-    // Stop first
     stopService();
 
 
@@ -1471,10 +1278,6 @@ bool FileGuard::disable()
 }
 
 
-// ============================================================
-// STATUS
-// ============================================================
-
 bool FileGuard::status()
 {
     if (!checkRootOrSudo())
@@ -1488,10 +1291,6 @@ bool FileGuard::status()
     return serviceIsActive();
 }
 
-
-// ============================================================
-// PRINT STATUS
-// ============================================================
 
 void FileGuard::printStatus()
 {
@@ -1547,10 +1346,6 @@ void FileGuard::printStatus()
 }
 
 
-// ============================================================
-// LOGS
-// ============================================================
-
 bool FileGuard::logs()
 {
     if (!checkRootOrSudo())
@@ -1564,10 +1359,6 @@ bool FileGuard::logs()
     return true;
 }
 
-
-// ============================================================
-// PRINT LOGS
-// ============================================================
 
 void FileGuard::printLogs()
 {
@@ -1596,10 +1387,6 @@ void FileGuard::printLogs()
 }
 
 
-// ============================================================
-// REBUILD
-// ============================================================
-
 bool FileGuard::rebuild()
 {
     rebuildBaseline();
@@ -1607,10 +1394,6 @@ bool FileGuard::rebuild()
     return true;
 }
 
-
-// ============================================================
-// REBUILD BASELINE
-// ============================================================
 
 void FileGuard::rebuildBaseline()
 {
@@ -1659,17 +1442,12 @@ void FileGuard::rebuildBaseline()
 }
 
 
-// ============================================================
-// DOWNLOAD UPDATE
-// ============================================================
-
 bool FileGuard::downloadUpdate()
 {
     std::cout
         << "\n[1/5] Downloading new FileGuard...\n";
 
 
-    // Remove old temporary file first
     executeRemote(
         "rm -f " +
         shellQuote(FILEGUARD_TEMP_SCRIPT));
@@ -1711,10 +1489,6 @@ bool FileGuard::downloadUpdate()
     }
 
 
-    // ========================================================
-    // CHECK FILE SIZE
-    // ========================================================
-
     if (!executeRemote(
         "test -s " +
         shellQuote(FILEGUARD_TEMP_SCRIPT),
@@ -1739,22 +1513,11 @@ bool FileGuard::downloadUpdate()
 }
 
 
-// ============================================================
-// VERIFY UPDATE
-// ============================================================
-
 bool FileGuard::verifyUpdate()
 {
     std::cout
         << "[2/5] Checking Python syntax...\n";
 
-
-    /*
-     * We intentionally use ast.parse instead of py_compile.
-     *
-     * py_compile can create __pycache__ files.
-     * FileGuard does not need those files.
-     */
 
     const std::string command =
         "python3 -c " +
@@ -1795,10 +1558,6 @@ bool FileGuard::verifyUpdate()
         << output;
 
 
-    // ========================================================
-    // BASIC FILE CHECK
-    // ========================================================
-
     if (!executeRemote(
         "head -n 1 " +
         shellQuote(FILEGUARD_TEMP_SCRIPT) +
@@ -1819,10 +1578,6 @@ bool FileGuard::verifyUpdate()
     return true;
 }
 
-
-// ============================================================
-// BACKUP CURRENT SCRIPT
-// ============================================================
 
 bool FileGuard::backupCurrentScript()
 {
@@ -1885,20 +1640,11 @@ bool FileGuard::backupCurrentScript()
 }
 
 
-// ============================================================
-// INSTALL UPDATED SCRIPT
-// ============================================================
-
 bool FileGuard::installUpdatedScript()
 {
     std::cout
         << "[4/5] Installing new FileGuard...\n";
 
-
-    /*
-     * mv is used here so that the final replacement is atomic
-     * on the same filesystem.
-     */
 
     if (!executeRemote(
         "mv -f " +
@@ -1938,10 +1684,6 @@ bool FileGuard::installUpdatedScript()
     return true;
 }
 
-
-// ============================================================
-// ROLLBACK UPDATE
-// ============================================================
 
 bool FileGuard::rollbackUpdate()
 {
@@ -1990,7 +1732,6 @@ bool FileGuard::rollbackUpdate()
         shellQuote(FILEGUARD_TEMP_SCRIPT));
 
 
-    // Restart old version
     if (!executeRemote(
         "systemctl restart " +
         shellQuote(FILEGUARD_SERVICE)))
@@ -2020,10 +1761,6 @@ bool FileGuard::rollbackUpdate()
 }
 
 
-// ============================================================
-// UPDATE
-// ============================================================
-
 bool FileGuard::update()
 {
     std::cout
@@ -2032,19 +1769,11 @@ bool FileGuard::update()
         << "========================================\n\n";
 
 
-    // ========================================================
-    // ROOT / SUDO
-    // ========================================================
-
     if (!checkRootOrSudo())
     {
         return false;
     }
 
-
-    // ========================================================
-    // SERVICE CHECK
-    // ========================================================
 
     if (!serviceExists())
     {
@@ -2056,10 +1785,6 @@ bool FileGuard::update()
     }
 
 
-    // ========================================================
-    // CURRENT SCRIPT CHECK
-    // ========================================================
-
     if (!executeRemote(
         "test -f " +
         shellQuote(FILEGUARD_SCRIPT)))
@@ -2070,10 +1795,6 @@ bool FileGuard::update()
         return false;
     }
 
-
-    // ========================================================
-    // CURL
-    // ========================================================
 
     if (!commandExists("curl"))
     {
@@ -2107,19 +1828,11 @@ bool FileGuard::update()
     }
 
 
-    // ========================================================
-    // DOWNLOAD
-    // ========================================================
-
     if (!downloadUpdate())
     {
         return false;
     }
 
-
-    // ========================================================
-    // VERIFY
-    // ========================================================
 
     if (!verifyUpdate())
     {
@@ -2136,10 +1849,6 @@ bool FileGuard::update()
     }
 
 
-    // ========================================================
-    // BACKUP
-    // ========================================================
-
     if (!backupCurrentScript())
     {
         executeRemote(
@@ -2149,10 +1858,6 @@ bool FileGuard::update()
         return false;
     }
 
-
-    // ========================================================
-    // INSTALL NEW FILE
-    // ========================================================
 
     if (!installUpdatedScript())
     {
@@ -2167,10 +1872,6 @@ bool FileGuard::update()
         return false;
     }
 
-
-    // ========================================================
-    // RESTART SERVICE
-    // ========================================================
 
     std::cout
         << "[5/5] Restarting FileGuard service...\n";
@@ -2190,17 +1891,9 @@ bool FileGuard::update()
     }
 
 
-    // ========================================================
-    // WAIT A LITTLE
-    // ========================================================
-
     executeRemote(
         "sleep 1");
 
-
-    // ========================================================
-    // ACTIVE CHECK
-    // ========================================================
 
     if (!serviceIsActive())
     {
@@ -2220,18 +1913,10 @@ bool FileGuard::update()
     }
 
 
-    // ========================================================
-    // CLEAN TEMP
-    // ========================================================
-
     executeRemote(
         "rm -f " +
         shellQuote(FILEGUARD_TEMP_SCRIPT));
 
-
-    // ========================================================
-    // SUCCESS
-    // ========================================================
 
     std::cout
         << "\n========================================\n"
@@ -2250,10 +1935,6 @@ bool FileGuard::update()
     return true;
 }
 
-
-// ============================================================
-// MENU
-// ============================================================
 
 void FileGuard::menu()
 {
