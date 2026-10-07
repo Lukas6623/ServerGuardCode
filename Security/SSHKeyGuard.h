@@ -3,10 +3,6 @@
 #include <libssh2.h>
 #include <string>
 
-// ============================================================
-// SERVERGUARD SSH KEY GUARD
-// ============================================================
-
 class SSHKeyGuard {
 public:
 
@@ -15,23 +11,13 @@ public:
         const std::string& sudoPassword
     );
 
-    // ========================================================
-    // MAIN MENU
-    // ========================================================
-
     void menu();
-
-    // ========================================================
-    // WEB INTERFACE
-    // ========================================================
 
     bool webInstall();
     bool webRemove();
 
-    // Start = enable + start
     bool webStart();
 
-    // Stop = stop + disable
     bool webStop();
 
     bool webRestart();
@@ -49,16 +35,8 @@ public:
 
 private:
 
-    // ========================================================
-    // SSH
-    // ========================================================
-
     LIBSSH2_SESSION* session;
     std::string sudoPassword;
-
-    // ========================================================
-    // MAIN ACTIONS
-    // ========================================================
 
     void installGuard();
     void removeGuard();
@@ -78,19 +56,11 @@ private:
     void installAudit();
     void updateGuard();
 
-    // ========================================================
-    // SSH COMMAND EXECUTION
-    // ========================================================
-
     bool executeRemote(
         const std::string& command,
         std::string& output,
         int& exitCode
     );
-
-    // ========================================================
-    // HELPERS
-    // ========================================================
 
     bool checkRootAccess();
 
