@@ -1,0 +1,13 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Linux" />
+    <BuildType Name="Release" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Security/Security.vcxproj" Id="dbadbda4-e600-48d6-a7f8-58033241cfe6">
+    <BuildType Solution="Linux|x64" Project="Release" />
+    <Build Solution="Linux|x86" Project="false" />
+  </Project>
+</Solution>
