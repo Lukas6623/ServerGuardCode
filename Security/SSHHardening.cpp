@@ -8,10 +8,6 @@
 #include <cctype>
 
 
-// ============================================================
-// CONFIGURATION
-// ============================================================
-
 static const std::string SERVERGUARD_DIR =
 "/opt/serverguard";
 
@@ -25,17 +21,9 @@ static const std::string BACKUP_DIR =
 "/opt/serverguard/backups";
 
 
-// ============================================================
-// SERVERGUARD HARDENING CONFIG
-// ============================================================
-
 static const std::string HARDENING_CONFIG =
 "/etc/ssh/sshd_config.d/99-serverguard-hardening.conf";
 
-
-// ============================================================
-// UPDATE CONFIGURATION
-// ============================================================
 
 static const std::string HARDENING_UPDATE_URL =
 "https://raw.githubusercontent.com/"
@@ -51,15 +39,9 @@ static const std::string HARDENING_BACKUP_SCRIPT =
 "/opt/serverguard/backups/ssh-hardening/ssh_hardening.py";
 
 
-// Backup of the dedicated ServerGuard SSH configuration.
-// This is used when removing the module.
 static const std::string HARDENING_CONFIG_BACKUP =
 "/opt/serverguard/backups/ssh-hardening/99-serverguard-hardening.conf";
 
-
-// ============================================================
-// SHELL QUOTE
-// ============================================================
 
 static std::string shellQuote(
     const std::string& value
@@ -85,11 +67,6 @@ static std::string shellQuote(
 }
 
 
-
-// ============================================================
-// CONSTRUCTOR
-// ============================================================
-
 SSHHardening::SSHHardening(
     LIBSSH2_SESSION* sshSession,
     const std::string& password,
@@ -110,10 +87,6 @@ SSHHardening::SSHHardening(
 }
 
 
-// ============================================================
-// EXECUTE REMOTE COMMAND
-// ============================================================
-
 bool SSHHardening::executeRemote(
     const std::string& command,
     std::string& output,
@@ -126,10 +99,6 @@ bool SSHHardening::executeRemote(
     exitCode = -1;
 
 
-    // ========================================================
-    // CHECK SESSION
-    // ========================================================
-
     if (!session)
     {
         output = "SSH session is invalid.";
@@ -138,16 +107,8 @@ bool SSHHardening::executeRemote(
     }
 
 
-    // ========================================================
-    // FINAL COMMAND
-    // ========================================================
-
     std::string finalCommand = command;
 
-
-    // ========================================================
-    // SUDO
-    // ========================================================
 
     if (useSudo && sudoRequired)
     {
@@ -167,10 +128,6 @@ bool SSHHardening::executeRemote(
     }
 
 
-    // ========================================================
-    // OPEN CHANNEL
-    // ========================================================
-
     LIBSSH2_CHANNEL* channel = nullptr;
 
     while (true)
@@ -185,11 +142,6 @@ bool SSHHardening::executeRemote(
             break;
         }
 
-
-        // ----------------------------------------------------
-        // Non-blocking SSH session may temporarily return
-        // EAGAIN. Give libssh2 another chance.
-        // ----------------------------------------------------
 
         int lastError = 0;
 
@@ -234,19 +186,11 @@ bool SSHHardening::executeRemote(
     }
 
 
-    // ========================================================
-    // MERGE STDERR
-    // ========================================================
-
     libssh2_channel_handle_extended_data2(
         channel,
         LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE
     );
 
-
-    // ========================================================
-    // EXECUTE COMMAND
-    // ========================================================
 
     while (true)
     {
@@ -263,20 +207,11 @@ bool SSHHardening::executeRemote(
         }
 
 
-        // ----------------------------------------------------
-        // Non-blocking session:
-        // command request is not ready yet.
-        // ----------------------------------------------------
-
         if (rc == LIBSSH2_ERROR_EAGAIN)
         {
             continue;
         }
 
-
-        // ----------------------------------------------------
-        // REAL ERROR
-        // ----------------------------------------------------
 
         char* errorMessage = nullptr;
 
@@ -325,10 +260,6 @@ bool SSHHardening::executeRemote(
     }
 
 
-    // ========================================================
-    // READ OUTPUT
-    // ========================================================
-
     char buffer[4096];
 
 
@@ -375,20 +306,12 @@ bool SSHHardening::executeRemote(
     }
 
 
-    // ========================================================
-    // CLOSE CHANNEL
-    // ========================================================
-
     libssh2_channel_send_eof(channel);
 
     libssh2_channel_wait_eof(channel);
 
     libssh2_channel_wait_closed(channel);
 
-
-    // ========================================================
-    // EXIT CODE
-    // ========================================================
 
     exitCode =
         libssh2_channel_get_exit_status(
@@ -399,17 +322,9 @@ bool SSHHardening::executeRemote(
     libssh2_channel_free(channel);
 
 
-    // ========================================================
-    // RESULT
-    // ========================================================
-
     return exitCode == 0;
 }
 
-
-// ============================================================
-// SUDO AUTHENTICATION
-// ============================================================
 
 bool SSHHardening::authenticateSudo()
 {
@@ -623,10 +538,6 @@ bool SSHHardening::authenticateSudo()
 }
 
 
-// ============================================================
-// COMMAND EXISTS
-// ============================================================
-
 bool SSHHardening::commandExists(
     const std::string& command
 )
@@ -653,10 +564,6 @@ bool SSHHardening::commandExists(
     return exitCode == 0;
 }
 
-
-// ============================================================
-// ROOT / SUDO
-// ============================================================
 
 bool SSHHardening::checkRootOrSudo()
 {
@@ -727,10 +634,6 @@ bool SSHHardening::checkRootOrSudo()
 }
 
 
-// ============================================================
-// CHECK SCRIPT
-// ============================================================
-
 bool SSHHardening::checkScript()
 {
     std::string output;
@@ -754,10 +657,6 @@ bool SSHHardening::checkScript()
     return exitCode == 0;
 }
 
-
-// ============================================================
-// SET PERMISSIONS
-// ============================================================
 
 bool SSHHardening::setPermissions()
 {
@@ -801,10 +700,6 @@ bool SSHHardening::setPermissions()
 }
 
 
-// ============================================================
-// RUN HARDENING
-// ============================================================
-
 bool SSHHardening::runHardening()
 {
     std::cout
@@ -825,10 +720,6 @@ bool SSHHardening::runHardening()
     int exitCode = -1;
 
 
-    // ========================================================
-    // AUTHENTICATION METHOD
-    // ========================================================
-
     std::string authMethod;
 
     if (keyAuthentication)
@@ -847,10 +738,6 @@ bool SSHHardening::runHardening()
     }
 
 
-    // ========================================================
-    // BUILD PYTHON COMMAND
-    // ========================================================
-
     std::string command =
         "python3 " +
         shellQuote(HARDENING_SCRIPT) +
@@ -862,10 +749,6 @@ bool SSHHardening::runHardening()
         << "Running SSH hardening pre-flight checks...\n";
 
 
-    // ========================================================
-    // EXECUTE REMOTE SCRIPT
-    // ========================================================
-
     bool result =
         executeRemote(
             command,
@@ -875,10 +758,6 @@ bool SSHHardening::runHardening()
         );
 
 
-    // ========================================================
-    // SHOW PYTHON OUTPUT
-    // ========================================================
-
     if (!output.empty())
     {
         std::cout
@@ -886,10 +765,6 @@ bool SSHHardening::runHardening()
             << "\n";
     }
 
-
-    // ========================================================
-    // CHECK EXECUTION RESULT
-    // ========================================================
 
     if (!result)
     {
@@ -907,10 +782,6 @@ bool SSHHardening::runHardening()
     }
 
 
-    // ========================================================
-    // VERIFY HARDENING
-    // ========================================================
-
     if (!checkHardening())
     {
         std::cout
@@ -922,10 +793,6 @@ bool SSHHardening::runHardening()
     }
 
 
-    // ========================================================
-    // SUCCESS
-    // ========================================================
-
     hardeningEnabled = true;
 
 
@@ -936,10 +803,6 @@ bool SSHHardening::runHardening()
     return true;
 }
 
-
-// ============================================================
-// CHECK HARDENING
-// ============================================================
 
 bool SSHHardening::checkHardening()
 {
@@ -980,10 +843,6 @@ bool SSHHardening::checkHardening()
         return false;
     }
 
-
-    // ========================================================
-    // VALUE PARSER
-    // ========================================================
 
     auto getValue =
         [&](const std::string& name)
@@ -1030,10 +889,6 @@ bool SSHHardening::checkHardening()
         };
 
 
-    // ========================================================
-    // READ VALUES
-    // ========================================================
-
     std::string permitRootLogin =
         getValue("permitrootlogin");
 
@@ -1064,10 +919,6 @@ bool SSHHardening::checkHardening()
     std::string compression =
         getValue("compression");
 
-
-    // ========================================================
-    // DISPLAY
-    // ========================================================
 
     std::cout
         << "PermitRootLogin: "
@@ -1119,10 +970,6 @@ bool SSHHardening::checkHardening()
         << compression
         << "\n";
 
-
-    // ========================================================
-    // CHECK REQUIRED VALUES
-    // ========================================================
 
     bool allGood = true;
 
@@ -1259,10 +1106,6 @@ bool SSHHardening::checkHardening()
     }
 
 
-    // ========================================================
-    // SSH SERVICE
-    // ========================================================
-
     if (checkSSHService())
     {
         std::cout
@@ -1276,10 +1119,6 @@ bool SSHHardening::checkHardening()
         allGood = false;
     }
 
-
-    // ========================================================
-    // FINAL STATUS
-    // ========================================================
 
     if (allGood)
     {
@@ -1312,10 +1151,6 @@ bool SSHHardening::checkHardening()
     return allGood;
 }
 
-
-// ============================================================
-// SSH SERVICE
-// ============================================================
 
 bool SSHHardening::checkSSHService()
 {
@@ -1350,10 +1185,6 @@ bool SSHHardening::checkSSHService()
 }
 
 
-// ============================================================
-// CONFIG VALIDATION
-// ============================================================
-
 bool SSHHardening::isSSHConfigValid()
 {
     std::string output;
@@ -1382,10 +1213,6 @@ bool SSHHardening::isSSHConfigValid()
     return true;
 }
 
-
-// ============================================================
-// SHOW BACKUPS
-// ============================================================
 
 bool SSHHardening::showBackups()
 {
@@ -1444,10 +1271,6 @@ bool SSHHardening::showBackups()
 }
 
 
-// ============================================================
-// RESTORE CONFIGURATION
-// ============================================================
-
 bool SSHHardening::restoreConfiguration()
 {
     std::cout
@@ -1474,10 +1297,6 @@ bool SSHHardening::restoreConfiguration()
         return false;
     }
 
-
-    // ========================================================
-    // SECURITY CHECK
-    // ========================================================
 
     if (
         filename.find("/") !=
@@ -1526,10 +1345,6 @@ bool SSHHardening::restoreConfiguration()
     int exitCode = -1;
 
 
-    // ========================================================
-    // CHECK FILE
-    // ========================================================
-
     std::string checkCommand =
         "test -f " +
         shellQuote(backupPath);
@@ -1551,10 +1366,6 @@ bool SSHHardening::restoreConfiguration()
         return false;
     }
 
-
-    // ========================================================
-    // RESTORE MAIN SSH CONFIG
-    // ========================================================
 
     std::cout
         << "\nRestoring configuration...\n";
@@ -1590,10 +1401,6 @@ bool SSHHardening::restoreConfiguration()
     }
 
 
-    // ========================================================
-    // VALIDATE
-    // ========================================================
-
     if (!isSSHConfigValid())
     {
         std::cout
@@ -1602,10 +1409,6 @@ bool SSHHardening::restoreConfiguration()
         return false;
     }
 
-
-    // ========================================================
-    // RELOAD
-    // ========================================================
 
     command =
         "systemctl reload ssh || "
@@ -1637,10 +1440,6 @@ bool SSHHardening::restoreConfiguration()
 }
 
 
-// ============================================================
-// DOWNLOAD UPDATE
-// ============================================================
-
 bool SSHHardening::downloadUpdate()
 {
     std::cout
@@ -1652,10 +1451,6 @@ bool SSHHardening::downloadUpdate()
     int exitCode = -1;
 
 
-    // ========================================================
-    // REMOVE OLD TEMPORARY FILE
-    // ========================================================
-
     executeRemote(
         "rm -f " +
         shellQuote(HARDENING_TEMP_SCRIPT),
@@ -1664,10 +1459,6 @@ bool SSHHardening::downloadUpdate()
         true
     );
 
-
-    // ========================================================
-    // DOWNLOAD
-    // ========================================================
 
     std::string command =
         "curl -fL "
@@ -1717,10 +1508,6 @@ bool SSHHardening::downloadUpdate()
     }
 
 
-    // ========================================================
-    // CHECK FILE
-    // ========================================================
-
     output.clear();
 
     exitCode = -1;
@@ -1759,19 +1546,11 @@ bool SSHHardening::downloadUpdate()
 }
 
 
-// ============================================================
-// VERIFY UPDATE
-// ============================================================
-
 bool SSHHardening::verifyUpdate()
 {
     std::cout
         << "[2/6] Checking Python syntax...\n";
 
-
-    // ========================================================
-    // PYTHON AST CHECK
-    // ========================================================
 
     std::string pythonCommand =
         "import ast,sys;"
@@ -1819,10 +1598,6 @@ bool SSHHardening::verifyUpdate()
         << output;
 
 
-    // ========================================================
-    // CHECK TEMP FILE
-    // ========================================================
-
     output.clear();
 
     exitCode = -1;
@@ -1842,10 +1617,6 @@ bool SSHHardening::verifyUpdate()
         return false;
     }
 
-
-    // ========================================================
-    // VERIFY CURRENT SSH CONFIGURATION
-    // ========================================================
 
     std::cout
         << "Checking current SSH configuration...\n";
@@ -1869,10 +1640,6 @@ bool SSHHardening::verifyUpdate()
 }
 
 
-// ============================================================
-// BACKUP CURRENT SCRIPT
-// ============================================================
-
 bool SSHHardening::backupCurrentScript()
 {
     std::cout
@@ -1883,10 +1650,6 @@ bool SSHHardening::backupCurrentScript()
 
     int exitCode = -1;
 
-
-    // ========================================================
-    // CHECK CURRENT SCRIPT
-    // ========================================================
 
     if (!executeRemote(
         "test -f " +
@@ -1902,10 +1665,6 @@ bool SSHHardening::backupCurrentScript()
         return false;
     }
 
-
-    // ========================================================
-    // CREATE BACKUP DIRECTORY
-    // ========================================================
 
     output.clear();
 
@@ -1935,10 +1694,6 @@ bool SSHHardening::backupCurrentScript()
         return false;
     }
 
-
-    // ========================================================
-    // COPY CURRENT SCRIPT
-    // ========================================================
 
     std::string command =
         "cp -p " +
@@ -1975,10 +1730,6 @@ bool SSHHardening::backupCurrentScript()
     }
 
 
-    // ========================================================
-    // BACKUP PERMISSIONS
-    // ========================================================
-
     command =
         "chown root:root " +
         shellQuote(HARDENING_BACKUP_SCRIPT) +
@@ -2004,10 +1755,6 @@ bool SSHHardening::backupCurrentScript()
 }
 
 
-// ============================================================
-// INSTALL UPDATED SCRIPT
-// ============================================================
-
 bool SSHHardening::installUpdatedScript()
 {
     std::cout
@@ -2018,10 +1765,6 @@ bool SSHHardening::installUpdatedScript()
 
     int exitCode = -1;
 
-
-    // ========================================================
-    // REPLACE SCRIPT
-    // ========================================================
 
     std::string command =
         "mv -f " +
@@ -2053,10 +1796,6 @@ bool SSHHardening::installUpdatedScript()
     }
 
 
-    // ========================================================
-    // PERMISSIONS
-    // ========================================================
-
     command =
         "chown root:root " +
         shellQuote(HARDENING_SCRIPT) +
@@ -2087,10 +1826,6 @@ bool SSHHardening::installUpdatedScript()
 }
 
 
-// ============================================================
-// ROLLBACK
-// ============================================================
-
 bool SSHHardening::rollbackUpdate()
 {
     std::cout
@@ -2103,10 +1838,6 @@ bool SSHHardening::rollbackUpdate()
 
     int exitCode = -1;
 
-
-    // ========================================================
-    // CHECK BACKUP
-    // ========================================================
 
     if (!executeRemote(
         "test -f " +
@@ -2122,10 +1853,6 @@ bool SSHHardening::rollbackUpdate()
         return false;
     }
 
-
-    // ========================================================
-    // RESTORE SCRIPT
-    // ========================================================
 
     std::string command =
         "cp -p " +
@@ -2153,10 +1880,6 @@ bool SSHHardening::rollbackUpdate()
     }
 
 
-    // ========================================================
-    // PERMISSIONS
-    // ========================================================
-
     command =
         "chown root:root " +
         shellQuote(HARDENING_SCRIPT) +
@@ -2172,10 +1895,6 @@ bool SSHHardening::rollbackUpdate()
     );
 
 
-    // ========================================================
-    // REMOVE TEMP
-    // ========================================================
-
     executeRemote(
         "rm -f " +
         shellQuote(HARDENING_TEMP_SCRIPT),
@@ -2184,10 +1903,6 @@ bool SSHHardening::rollbackUpdate()
         true
     );
 
-
-    // ========================================================
-    // VALIDATE SSH
-    // ========================================================
 
     if (!isSSHConfigValid())
     {
@@ -2208,10 +1923,6 @@ bool SSHHardening::rollbackUpdate()
 }
 
 
-// ============================================================
-// UPDATE
-// ============================================================
-
 bool SSHHardening::update()
 {
     std::cout
@@ -2220,19 +1931,11 @@ bool SSHHardening::update()
         << "============================================\n\n";
 
 
-    // ========================================================
-    // ROOT / SUDO
-    // ========================================================
-
     if (!checkRootOrSudo())
     {
         return false;
     }
 
-
-    // ========================================================
-    // SCRIPT CHECK
-    // ========================================================
 
     if (!checkScript())
     {
@@ -2245,10 +1948,6 @@ bool SSHHardening::update()
     }
 
 
-    // ========================================================
-    // PYTHON
-    // ========================================================
-
     if (!commandExists("python3"))
     {
         std::cout
@@ -2257,10 +1956,6 @@ bool SSHHardening::update()
         return false;
     }
 
-
-    // ========================================================
-    // CURL
-    // ========================================================
 
     if (!commandExists("curl"))
     {
@@ -2300,19 +1995,11 @@ bool SSHHardening::update()
     }
 
 
-    // ========================================================
-    // DOWNLOAD
-    // ========================================================
-
     if (!downloadUpdate())
     {
         return false;
     }
 
-
-    // ========================================================
-    // VERIFY
-    // ========================================================
 
     if (!verifyUpdate())
     {
@@ -2339,10 +2026,6 @@ bool SSHHardening::update()
     }
 
 
-    // ========================================================
-    // BACKUP
-    // ========================================================
-
     if (!backupCurrentScript())
     {
         std::string output;
@@ -2362,10 +2045,6 @@ bool SSHHardening::update()
         return false;
     }
 
-
-    // ========================================================
-    // INSTALL
-    // ========================================================
 
     if (!installUpdatedScript())
     {
@@ -2390,10 +2069,6 @@ bool SSHHardening::update()
         return false;
     }
 
-
-    // ========================================================
-    // VERIFY INSTALLED SCRIPT
-    // ========================================================
 
     std::cout
         << "[5/6] Verifying installed SSH Hardening script...\n";
@@ -2438,10 +2113,6 @@ bool SSHHardening::update()
         << output;
 
 
-    // ========================================================
-    // FINAL SSH CONFIGURATION CHECK
-    // ========================================================
-
     std::cout
         << "[6/6] Final SSH configuration validation...\n";
 
@@ -2465,10 +2136,6 @@ bool SSHHardening::update()
     }
 
 
-    // ========================================================
-    // REMOVE TEMP
-    // ========================================================
-
     executeRemote(
         "rm -f " +
         shellQuote(HARDENING_TEMP_SCRIPT),
@@ -2477,10 +2144,6 @@ bool SSHHardening::update()
         true
     );
 
-
-    // ========================================================
-    // SUCCESS
-    // ========================================================
 
     std::cout
         << "\n============================================\n"
@@ -2526,33 +2189,13 @@ void SSHHardening::menu()
         std::string choice;
         std::getline(std::cin, choice);
 
-        // ====================================================
-        // BACK
-        // ====================================================
-
         if (choice == "0")
         {
             return;
         }
 
-        // ====================================================
-        // APPLY HARDENING
-        // ====================================================
-
         if (choice == "1")
         {
-            /*
-             * IMPORTANT:
-             *
-             * Apply hardening ONLY through webApply().
-             *
-             * webApply() contains the SSH authentication
-             * safety check.
-             *
-             * If ServerGuard is connected using password
-             * authentication, hardening will be blocked.
-             */
-
             if (!webApply())
             {
                 std::cout
@@ -2563,10 +2206,6 @@ void SSHHardening::menu()
 
             continue;
         }
-
-        // ====================================================
-        // CHECK HARDENING STATUS
-        // ====================================================
 
         if (choice == "2")
         {
@@ -2579,10 +2218,6 @@ void SSHHardening::menu()
 
             continue;
         }
-
-        // ====================================================
-        // DISABLE HARDENING
-        // ====================================================
 
         if (choice == "3")
         {
@@ -2654,10 +2289,6 @@ void SSHHardening::menu()
 
             continue;
         }
-
-        // ====================================================
-        // SHOW SSH CONFIGURATION
-        // ====================================================
 
         if (choice == "4")
         {
@@ -2736,10 +2367,6 @@ void SSHHardening::menu()
             continue;
         }
 
-        // ====================================================
-        // RESTORE BACKUP
-        // ====================================================
-
         if (choice == "5")
         {
             if (!checkRootOrSudo())
@@ -2752,19 +2379,8 @@ void SSHHardening::menu()
                 << "Restore backup functionality.\n"
                 << "\n";
 
-            /*
-             * Здесь оставляем твою существующую реализацию
-             * восстановления backup.
-             *
-             * Важно: я не вызываю несуществующую функцию.
-             */
-
             continue;
         }
-
-        // ====================================================
-        // INSTALL / UPDATE SCRIPT
-        // ====================================================
 
         if (choice == "6")
         {
@@ -2798,10 +2414,6 @@ void SSHHardening::menu()
             continue;
         }
 
-        // ====================================================
-        // INVALID OPTION
-        // ====================================================
-
         std::cout
             << "\n"
             << "Invalid option.\n";
@@ -2809,19 +2421,11 @@ void SSHHardening::menu()
 }
 
 
-// ============================================================
-// STATUS
-// ============================================================
-
 bool SSHHardening::isEnabled() const
 {
     return hardeningEnabled;
 }
 
-
-// ============================================================
-// WEB INSTALL
-// ============================================================
 
 bool SSHHardening::webInstall()
 {
@@ -2831,19 +2435,11 @@ bool SSHHardening::webInstall()
         << "============================================\n\n";
 
 
-    // ========================================================
-    // ROOT / SUDO
-    // ========================================================
-
     if (!checkRootOrSudo())
     {
         return false;
     }
 
-
-    // ========================================================
-    // PYTHON
-    // ========================================================
 
     if (!commandExists("python3"))
     {
@@ -2853,10 +2449,6 @@ bool SSHHardening::webInstall()
         return false;
     }
 
-
-    // ========================================================
-    // CREATE SERVERGUARD DIRECTORY
-    // ========================================================
 
     std::string output;
 
@@ -2886,10 +2478,6 @@ bool SSHHardening::webInstall()
         return false;
     }
 
-
-    // ========================================================
-    // CHECK CURL
-    // ========================================================
 
     if (!commandExists("curl"))
     {
@@ -2929,10 +2517,6 @@ bool SSHHardening::webInstall()
     }
 
 
-    // ========================================================
-    // IF ALREADY INSTALLED
-    // ========================================================
-
     if (checkScript())
     {
         std::cout
@@ -2942,19 +2526,11 @@ bool SSHHardening::webInstall()
     }
 
 
-    // ========================================================
-    // DOWNLOAD
-    // ========================================================
-
     if (!downloadUpdate())
     {
         return false;
     }
 
-
-    // ========================================================
-    // VERIFY DOWNLOADED SCRIPT
-    // ========================================================
 
     std::cout
         << "Verifying downloaded SSH Hardening script...\n";
@@ -2984,10 +2560,6 @@ bool SSHHardening::webInstall()
     }
 
 
-    // ========================================================
-    // INSTALL
-    // ========================================================
-
     if (!installUpdatedScript())
     {
         std::cout
@@ -3012,10 +2584,6 @@ bool SSHHardening::webInstall()
     }
 
 
-    // ========================================================
-    // FINAL CHECK
-    // ========================================================
-
     if (!checkScript())
     {
         std::cout
@@ -3024,10 +2592,6 @@ bool SSHHardening::webInstall()
         return false;
     }
 
-
-    // ========================================================
-    // CLEAN TEMP
-    // ========================================================
 
     executeRemote(
         "rm -f " +
@@ -3054,10 +2618,6 @@ bool SSHHardening::webInstall()
 }
 
 
-// ============================================================
-// WEB REMOVE
-// ============================================================
-
 bool SSHHardening::webRemove()
 {
     std::cout
@@ -3065,10 +2625,6 @@ bool SSHHardening::webRemove()
         << "        REMOVE SSH HARDENING\n"
         << "============================================\n\n";
 
-
-    // ========================================================
-    // ROOT / SUDO
-    // ========================================================
 
     if (!checkRootOrSudo())
     {
@@ -3080,10 +2636,6 @@ bool SSHHardening::webRemove()
 
     int exitCode = -1;
 
-
-    // ========================================================
-    // CREATE BACKUP DIRECTORY
-    // ========================================================
 
     if (!executeRemote(
         "mkdir -p " +
@@ -3100,10 +2652,6 @@ bool SSHHardening::webRemove()
     }
 
 
-    // ========================================================
-    // REMOVE OLD REMOVE-BACKUP
-    // ========================================================
-
     executeRemote(
         "rm -f " +
         shellQuote(HARDENING_CONFIG_BACKUP),
@@ -3112,10 +2660,6 @@ bool SSHHardening::webRemove()
         true
     );
 
-
-    // ========================================================
-    // BACKUP SERVERGUARD HARDENING CONFIG
-    // ========================================================
 
     std::string backupCommand =
         "if [ -f " +
@@ -3143,10 +2687,6 @@ bool SSHHardening::webRemove()
     }
 
 
-    // ========================================================
-    // REMOVE DEDICATED HARDENING CONFIG
-    // ========================================================
-
     std::cout
         << "Removing ServerGuard SSH configuration...\n";
 
@@ -3169,10 +2709,6 @@ bool SSHHardening::webRemove()
         return false;
     }
 
-
-    // ========================================================
-    // VALIDATE SSH CONFIGURATION
-    // ========================================================
 
     std::cout
         << "Validating SSH configuration...\n";
@@ -3222,10 +2758,6 @@ bool SSHHardening::webRemove()
     }
 
 
-    // ========================================================
-    // REMOVE SCRIPT
-    // ========================================================
-
     std::cout
         << "Removing SSH Hardening script...\n";
 
@@ -3248,7 +2780,6 @@ bool SSHHardening::webRemove()
             << "Cannot remove SSH Hardening script.\n";
 
 
-        // Restore config if script removal failed.
         std::string restoreCommand =
             "if [ -f " +
             shellQuote(HARDENING_CONFIG_BACKUP) +
@@ -3273,10 +2804,6 @@ bool SSHHardening::webRemove()
     }
 
 
-    // ========================================================
-    // FINAL SCRIPT CHECK
-    // ========================================================
-
     output.clear();
 
     exitCode = -1;
@@ -3297,10 +2824,6 @@ bool SSHHardening::webRemove()
     }
 
 
-    // ========================================================
-    // FINAL SSH VALIDATION
-    // ========================================================
-
     if (!isSSHConfigValid())
     {
         std::cout
@@ -3309,10 +2832,6 @@ bool SSHHardening::webRemove()
         return false;
     }
 
-
-    // ========================================================
-    // RELOAD SSH
-    // ========================================================
 
     std::cout
         << "Reloading SSH service...\n";
@@ -3336,10 +2855,6 @@ bool SSHHardening::webRemove()
         return false;
     }
 
-
-    // ========================================================
-    // FINAL STATE
-    // ========================================================
 
     hardeningEnabled = false;
 
@@ -3365,24 +2880,8 @@ bool SSHHardening::webRemove()
     return true;
 }
 
-// ============================================================
-// WEB APPLY
-// ============================================================
-
 bool SSHHardening::webApply()
 {
-    // ========================================================
-    // SAFETY CHECK
-    // ========================================================
-    //
-    // SSH hardening can disable password authentication.
-    // Therefore it is only allowed when ServerGuard itself
-    // is connected using an SSH private key.
-    //
-    // If ServerGuard is connected by password, stop immediately.
-    // Do not authenticate sudo, change permissions or modify SSH.
-    // ========================================================
-
     if (!keyAuthentication)
     {
         std::cout
@@ -3401,19 +2900,11 @@ bool SSHHardening::webApply()
     }
 
 
-    // ========================================================
-    // CHECK ROOT / SUDO
-    // ========================================================
-
     if (!checkRootOrSudo())
     {
         return false;
     }
 
-
-    // ========================================================
-    // CHECK SCRIPT
-    // ========================================================
 
     if (!checkScript())
     {
@@ -3426,27 +2917,15 @@ bool SSHHardening::webApply()
     }
 
 
-    // ========================================================
-    // PERMISSIONS
-    // ========================================================
-
     if (!setPermissions())
     {
         return false;
     }
 
 
-    // ========================================================
-    // APPLY
-    // ========================================================
-
     return runHardening();
 }
 
-
-// ============================================================
-// WEB VALIDATE
-// ============================================================
 
 bool SSHHardening::webValidate()
 {
@@ -3460,19 +2939,11 @@ bool SSHHardening::webValidate()
 }
 
 
-// ============================================================
-// WEB UPDATE
-// ============================================================
-
 bool SSHHardening::webUpdate()
 {
     return update();
 }
 
-
-// ============================================================
-// WEB STATUS
-// ============================================================
 
 std::string SSHHardening::webStatus()
 {
@@ -3481,17 +2952,9 @@ std::string SSHHardening::webStatus()
     int exitCode = -1;
 
 
-    // ========================================================
-    // SSH SERVICE
-    // ========================================================
-
     bool sshActive =
         checkSSHService();
 
-
-    // ========================================================
-    // DEFAULT VALUES
-    // ========================================================
 
     std::string permitRootLogin = "unknown";
     std::string permitEmptyPasswords = "unknown";
@@ -3502,10 +2965,6 @@ std::string SSHHardening::webStatus()
     std::string allowAgentForwarding = "unknown";
     std::string compression = "unknown";
 
-
-    // ========================================================
-    // READ EFFECTIVE SSH CONFIGURATION
-    // ========================================================
 
     if (sshActive)
     {
@@ -3588,10 +3047,6 @@ std::string SSHHardening::webStatus()
     }
 
 
-    // ========================================================
-    // REAL HARDENING STATUS
-    // ========================================================
-
     bool rootProtected =
         permitRootLogin == "prohibit-password" ||
         permitRootLogin == "without-password";
@@ -3613,25 +3068,13 @@ std::string SSHHardening::webStatus()
         realHardening;
 
 
-    // ========================================================
-    // SCRIPT
-    // ========================================================
-
     bool scriptInstalled =
         checkScript();
 
 
-    // ========================================================
-    // CONFIGURATION VALID
-    // ========================================================
-
     bool configValid =
         isSSHConfigValid();
 
-
-    // ========================================================
-    // JSON
-    // ========================================================
 
     std::ostringstream json;
 
@@ -3701,10 +3144,6 @@ std::string SSHHardening::webStatus()
 }
 
 
-// ============================================================
-// WEB BACKUPS
-// ============================================================
-
 std::string SSHHardening::webBackups()
 {
     std::string output;
@@ -3738,10 +3177,6 @@ std::string SSHHardening::webBackups()
         << "\""
         << ",\"text\":\"";
 
-
-    // ========================================================
-    // ESCAPE JSON
-    // ========================================================
 
     for (char c : output)
     {
