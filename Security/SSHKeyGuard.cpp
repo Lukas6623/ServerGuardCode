@@ -6,10 +6,6 @@
 #include <cctype>
 
 
-// ============================================================
-// SERVERGUARD SSH KEY GUARD
-// ============================================================
-
 static const std::string SSHKEY_SCRIPT =
 "/opt/serverguard/ssh_key_guard.py";
 
@@ -57,10 +53,6 @@ static const std::string SSHKEY_AUDIT_RULE =
 "serverguard-ssh-key.rules";
 
 
-// ============================================================
-// SYSTEMD SERVICE
-// ============================================================
-
 static const std::string SSHKEY_SERVICE_CONTENT = R"([Unit]
 Description=ServerGuard SSH Key Guard
 After=network-online.target auditd.service
@@ -94,10 +86,6 @@ WantedBy=multi-user.target
 )";
 
 
-// ============================================================
-// CONSTRUCTOR
-// ============================================================
-
 SSHKeyGuard::SSHKeyGuard(
     LIBSSH2_SESSION* session,
     const std::string& sudoPassword
@@ -108,10 +96,6 @@ SSHKeyGuard::SSHKeyGuard(
 {}
 
 
-// ============================================================
-// SEPARATOR
-// ============================================================
-
 void SSHKeyGuard::printSeparator()
 {
     std::cout
@@ -119,10 +103,6 @@ void SSHKeyGuard::printSeparator()
         << std::endl;
 }
 
-
-// ============================================================
-// SHELL QUOTE
-// ============================================================
 
 std::string SSHKeyGuard::shellQuote(
     const std::string& value
@@ -147,10 +127,6 @@ std::string SSHKeyGuard::shellQuote(
     return result;
 }
 
-
-// ============================================================
-// BASE64
-// ============================================================
 
 std::string SSHKeyGuard::base64Encode(
     const std::string& input
@@ -211,10 +187,6 @@ std::string SSHKeyGuard::base64Encode(
 }
 
 
-// ============================================================
-// EXECUTE REMOTE COMMAND
-// ============================================================
-
 bool SSHKeyGuard::executeRemote(
     const std::string& command,
     std::string& output,
@@ -238,10 +210,6 @@ bool SSHKeyGuard::executeRemote(
     std::string remoteCommand =
         command;
 
-
-    // ========================================================
-    // SUDO
-    // ========================================================
 
     if (!sudoPassword.empty())
     {
@@ -341,10 +309,6 @@ bool SSHKeyGuard::executeRemote(
     }
 
 
-    // ========================================================
-    // STDERR
-    // ========================================================
-
     while (true)
     {
         ssize_t bytesRead =
@@ -413,10 +377,6 @@ bool SSHKeyGuard::executeRemote(
 }
 
 
-// ============================================================
-// COMMAND EXISTS
-// ============================================================
-
 bool SSHKeyGuard::commandExists(
     const std::string& command
 )
@@ -440,20 +400,12 @@ bool SSHKeyGuard::commandExists(
 }
 
 
-// ============================================================
-// ROOT ACCESS
-// ============================================================
-
 bool SSHKeyGuard::checkRootAccess()
 {
     std::string output;
 
     int exitCode = -1;
 
-
-    // ========================================================
-    // DIRECT ROOT / SUDO ROOT TEST
-    // ========================================================
 
     if (
         executeRemote(
@@ -487,10 +439,6 @@ bool SSHKeyGuard::checkRootAccess()
     }
 
 
-    // ========================================================
-    // SUDO
-    // ========================================================
-
     if (sudoPassword.empty())
     {
         std::cout
@@ -518,10 +466,6 @@ bool SSHKeyGuard::checkRootAccess()
     }
 
 
-    // ========================================================
-    // REAL SUDO TEST
-    // ========================================================
-
     output.clear();
 
     exitCode = -1;
@@ -548,10 +492,6 @@ bool SSHKeyGuard::checkRootAccess()
 }
 
 
-// ============================================================
-// SCRIPT EXISTS
-// ============================================================
-
 bool SSHKeyGuard::scriptExists()
 {
     std::string output;
@@ -569,10 +509,6 @@ bool SSHKeyGuard::scriptExists()
     );
 }
 
-
-// ============================================================
-// SERVICE EXISTS
-// ============================================================
 
 bool SSHKeyGuard::serviceExists()
 {
@@ -592,10 +528,6 @@ bool SSHKeyGuard::serviceExists()
 }
 
 
-// ============================================================
-// SERVICE ACTIVE
-// ============================================================
-
 bool SSHKeyGuard::isServiceActive()
 {
     std::string output;
@@ -612,10 +544,6 @@ bool SSHKeyGuard::isServiceActive()
 }
 
 
-// ============================================================
-// SERVICE ENABLED
-// ============================================================
-
 bool SSHKeyGuard::isServiceEnabled()
 {
     std::string output;
@@ -631,10 +559,6 @@ bool SSHKeyGuard::isServiceEnabled()
     );
 }
 
-
-// ============================================================
-// INSTALL PYTHON
-// ============================================================
 
 bool SSHKeyGuard::installPython()
 {
@@ -687,10 +611,6 @@ bool SSHKeyGuard::installPython()
 }
 
 
-// ============================================================
-// INSTALL CURL
-// ============================================================
-
 bool SSHKeyGuard::installCurl()
 {
     if (
@@ -742,10 +662,6 @@ bool SSHKeyGuard::installCurl()
 }
 
 
-// ============================================================
-// INSTALL AUDITD
-// ============================================================
-
 bool SSHKeyGuard::installAuditd()
 {
     if (
@@ -795,10 +711,6 @@ bool SSHKeyGuard::installAuditd()
     }
 
 
-    // ========================================================
-    // ENABLE AUDITD
-    // ========================================================
-
     output.clear();
 
     exitCode = -1;
@@ -828,10 +740,6 @@ bool SSHKeyGuard::installAuditd()
     );
 }
 
-
-// ============================================================
-// DOWNLOAD SCRIPT
-// ============================================================
 
 bool SSHKeyGuard::downloadScript(
     const std::string& url,
@@ -904,10 +812,6 @@ bool SSHKeyGuard::downloadScript(
 }
 
 
-// ============================================================
-// VALIDATE PYTHON
-// ============================================================
-
 bool SSHKeyGuard::validatePythonScript(
     const std::string& path
 )
@@ -952,10 +856,6 @@ bool SSHKeyGuard::validatePythonScript(
     return false;
 }
 
-
-// ============================================================
-// WRITE SYSTEMD SERVICE
-// ============================================================
 
 bool SSHKeyGuard::writeServiceFile()
 {
@@ -1028,10 +928,6 @@ bool SSHKeyGuard::writeServiceFile()
 }
 
 
-// ============================================================
-// RELOAD SYSTEMD
-// ============================================================
-
 bool SSHKeyGuard::reloadSystemd()
 {
     std::cout
@@ -1063,10 +959,6 @@ bool SSHKeyGuard::reloadSystemd()
     return true;
 }
 
-
-// ============================================================
-// ENABLE SERVICE
-// ============================================================
 
 bool SSHKeyGuard::enableService()
 {
@@ -1101,10 +993,6 @@ bool SSHKeyGuard::enableService()
 }
 
 
-// ============================================================
-// REMOVE SERVICE FILE
-// ============================================================
-
 bool SSHKeyGuard::removeServiceFile()
 {
     std::string output;
@@ -1122,10 +1010,6 @@ bool SSHKeyGuard::removeServiceFile()
     );
 }
 
-
-// ============================================================
-// BACKUP CURRENT SCRIPT
-// ============================================================
 
 bool SSHKeyGuard::backupCurrentScript()
 {
@@ -1189,10 +1073,6 @@ bool SSHKeyGuard::backupCurrentScript()
     return true;
 }
 
-
-// ============================================================
-// RESTORE BACKUP
-// ============================================================
 
 bool SSHKeyGuard::restoreBackup()
 {
@@ -1263,10 +1143,6 @@ bool SSHKeyGuard::restoreBackup()
 }
 
 
-// ============================================================
-// PRINT OUTPUT
-// ============================================================
-
 void SSHKeyGuard::printCommandOutput(
     const std::string& output
 )
@@ -1292,10 +1168,6 @@ void SSHKeyGuard::printCommandOutput(
     }
 }
 
-
-// ============================================================
-// INSTALL GUARD
-// ============================================================
 
 void SSHKeyGuard::installGuard()
 {
@@ -1327,10 +1199,6 @@ void SSHKeyGuard::installGuard()
     int exitCode = -1;
 
 
-    // ========================================================
-    // PYTHON
-    // ========================================================
-
     if (
         !installPython()
         )
@@ -1342,10 +1210,6 @@ void SSHKeyGuard::installGuard()
         return;
     }
 
-
-    // ========================================================
-    // SYSTEMCTL
-    // ========================================================
 
     if (
         !commandExists(
@@ -1361,10 +1225,6 @@ void SSHKeyGuard::installGuard()
     }
 
 
-    // ========================================================
-    // CURL
-    // ========================================================
-
     if (
         !installCurl()
         )
@@ -1376,10 +1236,6 @@ void SSHKeyGuard::installGuard()
         return;
     }
 
-
-    // ========================================================
-    // AUDITD
-    // ========================================================
 
     std::cout
         << std::endl
@@ -1401,10 +1257,6 @@ void SSHKeyGuard::installGuard()
             << std::endl;
     }
 
-
-    // ========================================================
-    // DIRECTORIES
-    // ========================================================
 
     std::cout
         << "Creating directories..."
@@ -1439,10 +1291,6 @@ void SSHKeyGuard::installGuard()
     }
 
 
-    // ========================================================
-    // DOWNLOAD
-    // ========================================================
-
     if (
         !downloadScript(
             SSHKEY_UPDATE_URL,
@@ -1457,10 +1305,6 @@ void SSHKeyGuard::installGuard()
         return;
     }
 
-
-    // ========================================================
-    // VALIDATE
-    // ========================================================
 
     if (
         !validatePythonScript(
@@ -1481,10 +1325,6 @@ void SSHKeyGuard::installGuard()
     }
 
 
-    // ========================================================
-    // BACKUP
-    // ========================================================
-
     if (
         scriptExists()
         )
@@ -1504,10 +1344,6 @@ void SSHKeyGuard::installGuard()
         }
     }
 
-
-    // ========================================================
-    // INSTALL SCRIPT
-    // ========================================================
 
     std::cout
         << "Installing SSH Key Guard script..."
@@ -1566,10 +1402,6 @@ void SSHKeyGuard::installGuard()
     }
 
 
-    // ========================================================
-    // INITIAL BASELINE
-    // ========================================================
-
     std::cout
         << "Creating SSH key baseline..."
         << std::endl;
@@ -1596,10 +1428,6 @@ void SSHKeyGuard::installGuard()
     );
 
 
-    // ========================================================
-    // SYSTEMD
-    // ========================================================
-
     if (
         !writeServiceFile()
         )
@@ -1612,10 +1440,6 @@ void SSHKeyGuard::installGuard()
     }
 
 
-    // ========================================================
-    // RELOAD
-    // ========================================================
-
     if (
         !reloadSystemd()
         )
@@ -1624,10 +1448,6 @@ void SSHKeyGuard::installGuard()
     }
 
 
-    // ========================================================
-    // ENABLE
-    // ========================================================
-
     if (
         !enableService()
         )
@@ -1635,10 +1455,6 @@ void SSHKeyGuard::installGuard()
         return;
     }
 
-
-    // ========================================================
-    // START
-    // ========================================================
 
     std::cout
         << "Starting SSH Key Guard..."
@@ -1670,10 +1486,6 @@ void SSHKeyGuard::installGuard()
         return;
     }
 
-
-    // ========================================================
-    // VERIFY
-    // ========================================================
 
     std::cout
         << "Checking service..."
@@ -1780,10 +1592,6 @@ void SSHKeyGuard::installGuard()
 }
 
 
-// ============================================================
-// REMOVE GUARD
-// ============================================================
-
 void SSHKeyGuard::removeGuard()
 {
     printSeparator();
@@ -1810,10 +1618,6 @@ void SSHKeyGuard::removeGuard()
     int exitCode = -1;
 
 
-    // ========================================================
-    // STOP
-    // ========================================================
-
     std::cout
         << "Stopping service..."
         << std::endl;
@@ -1827,10 +1631,6 @@ void SSHKeyGuard::removeGuard()
     );
 
 
-    // ========================================================
-    // DISABLE
-    // ========================================================
-
     output.clear();
 
     exitCode = -1;
@@ -1843,10 +1643,6 @@ void SSHKeyGuard::removeGuard()
         exitCode
     );
 
-
-    // ========================================================
-    // REMOVE SERVICE
-    // ========================================================
 
     std::cout
         << "Removing systemd service..."
@@ -1872,10 +1668,6 @@ void SSHKeyGuard::removeGuard()
         return;
     }
 
-
-    // ========================================================
-    // REMOVE SCRIPT
-    // ========================================================
 
     std::cout
         << "Removing SSH Key Guard script..."
@@ -1910,10 +1702,6 @@ void SSHKeyGuard::removeGuard()
     }
 
 
-    // ========================================================
-    // REMOVE AUDIT RULE
-    // ========================================================
-
     std::cout
         << "Removing ServerGuard audit rules..."
         << std::endl;
@@ -1933,10 +1721,6 @@ void SSHKeyGuard::removeGuard()
         exitCode
     );
 
-
-    // ========================================================
-    // RELOAD AUDIT
-    // ========================================================
 
     output.clear();
 
@@ -1982,10 +1766,6 @@ void SSHKeyGuard::removeGuard()
     printSeparator();
 }
 
-
-// ============================================================
-// START
-// ============================================================
 
 void SSHKeyGuard::startGuard()
 {
@@ -2076,10 +1856,6 @@ void SSHKeyGuard::startGuard()
 }
 
 
-// ============================================================
-// STOP
-// ============================================================
-
 void SSHKeyGuard::stopGuard()
 {
     printSeparator();
@@ -2140,10 +1916,6 @@ void SSHKeyGuard::stopGuard()
         << std::endl;
 }
 
-
-// ============================================================
-// RESTART
-// ============================================================
 
 void SSHKeyGuard::restartGuard()
 {
@@ -2246,10 +2018,6 @@ void SSHKeyGuard::restartGuard()
     }
 }
 
-
-// ============================================================
-// STATUS
-// ============================================================
 
 void SSHKeyGuard::showStatus()
 {
@@ -2387,10 +2155,6 @@ void SSHKeyGuard::showStatus()
 }
 
 
-// ============================================================
-// INITIALIZE BASELINE
-// ============================================================
-
 void SSHKeyGuard::initializeBaseline()
 {
     printSeparator();
@@ -2453,10 +2217,6 @@ void SSHKeyGuard::initializeBaseline()
 }
 
 
-// ============================================================
-// SCAN NOW
-// ============================================================
-
 void SSHKeyGuard::scanNow()
 {
     printSeparator();
@@ -2512,10 +2272,6 @@ void SSHKeyGuard::scanNow()
     );
 }
 
-
-// ============================================================
-// EVENTS
-// ============================================================
 
 void SSHKeyGuard::showEvents()
 {
@@ -2573,10 +2329,6 @@ void SSHKeyGuard::showEvents()
 }
 
 
-// ============================================================
-// LOGS
-// ============================================================
-
 void SSHKeyGuard::showLogs()
 {
     printSeparator();
@@ -2621,10 +2373,6 @@ void SSHKeyGuard::showLogs()
     );
 }
 
-
-// ============================================================
-// INSTALL AUDIT
-// ============================================================
 
 void SSHKeyGuard::installAudit()
 {
@@ -2676,10 +2424,6 @@ void SSHKeyGuard::installAudit()
     int exitCode = -1;
 
 
-    // ========================================================
-    // LET PYTHON GUARD CREATE RULES
-    // ========================================================
-
     if (
         executeRemote(
             "python3 "
@@ -2709,10 +2453,6 @@ void SSHKeyGuard::installAudit()
     }
 
 
-    // ========================================================
-    // AUDIT STATUS
-    // ========================================================
-
     output.clear();
 
     exitCode = -1;
@@ -2741,10 +2481,6 @@ void SSHKeyGuard::installAudit()
     printSeparator();
 }
 
-
-// ============================================================
-// UPDATE
-// ============================================================
 
 void SSHKeyGuard::updateGuard()
 {
@@ -2802,10 +2538,6 @@ void SSHKeyGuard::updateGuard()
     int exitCode = -1;
 
 
-    // ========================================================
-    // DOWNLOAD
-    // ========================================================
-
     if (
         !downloadScript(
             SSHKEY_UPDATE_URL,
@@ -2820,10 +2552,6 @@ void SSHKeyGuard::updateGuard()
         return;
     }
 
-
-    // ========================================================
-    // VALIDATE
-    // ========================================================
 
     if (
         !validatePythonScript(
@@ -2850,10 +2578,6 @@ void SSHKeyGuard::updateGuard()
     }
 
 
-    // ========================================================
-    // BACKUP
-    // ========================================================
-
     if (
         !backupCurrentScript()
         )
@@ -2876,10 +2600,6 @@ void SSHKeyGuard::updateGuard()
         return;
     }
 
-
-    // ========================================================
-    // INSTALL
-    // ========================================================
 
     std::cout
         << "Installing update..."
@@ -2929,10 +2649,6 @@ void SSHKeyGuard::updateGuard()
     );
 
 
-    // ========================================================
-    // RESTART
-    // ========================================================
-
     if (
         serviceExists()
         )
@@ -2965,10 +2681,6 @@ void SSHKeyGuard::updateGuard()
                 output
             );
 
-
-            // =================================================
-            // ROLLBACK
-            // =================================================
 
             std::cout
                 << "Restoring previous version..."
@@ -3082,10 +2794,6 @@ void SSHKeyGuard::updateGuard()
     printSeparator();
 }
 
-
-// ============================================================
-// MENU
-// ============================================================
 
 void SSHKeyGuard::menu()
 {
@@ -3306,15 +3014,6 @@ void SSHKeyGuard::menu()
 }
 
 
-// ============================================================
-// WEB INTERFACE
-// ============================================================
-
-
-// ============================================================
-// WEB INSTALL
-// ============================================================
-
 bool SSHKeyGuard::webInstall()
 {
     installGuard();
@@ -3339,10 +3038,6 @@ bool SSHKeyGuard::webInstall()
 }
 
 
-// ============================================================
-// WEB REMOVE
-// ============================================================
-
 bool SSHKeyGuard::webRemove()
 {
     removeGuard();
@@ -3354,10 +3049,6 @@ bool SSHKeyGuard::webRemove()
         !scriptExists();
 }
 
-
-// ============================================================
-// WEB START
-// ============================================================
 
 bool SSHKeyGuard::webStart()
 {
@@ -3372,10 +3063,6 @@ bool SSHKeyGuard::webStart()
     int exitCode = -1;
 
 
-    // ========================================================
-    // ENABLE SERVICE
-    // ========================================================
-
     if (
         !executeRemote(
             "systemctl enable "
@@ -3388,10 +3075,6 @@ bool SSHKeyGuard::webStart()
         return false;
     }
 
-
-    // ========================================================
-    // START SERVICE
-    // ========================================================
 
     output.clear();
 
@@ -3411,20 +3094,12 @@ bool SSHKeyGuard::webStart()
     }
 
 
-    // ========================================================
-    // VERIFY
-    // ========================================================
-
     return
         isServiceActive()
         &&
         isServiceEnabled();
 }
 
-
-// ============================================================
-// WEB STOP / DISABLE
-// ============================================================
 
 bool SSHKeyGuard::webStop()
 {
@@ -3439,10 +3114,6 @@ bool SSHKeyGuard::webStop()
     int exitCode = -1;
 
 
-    // ========================================================
-    // STOP SERVICE
-    // ========================================================
-
     if (
         !executeRemote(
             "systemctl stop "
@@ -3455,10 +3126,6 @@ bool SSHKeyGuard::webStop()
         return false;
     }
 
-
-    // ========================================================
-    // DISABLE SERVICE
-    // ========================================================
 
     output.clear();
 
@@ -3478,10 +3145,6 @@ bool SSHKeyGuard::webStop()
     }
 
 
-    // ========================================================
-    // VERIFY REAL SYSTEMD STATE
-    // ========================================================
-
     bool active =
         isServiceActive();
 
@@ -3496,10 +3159,6 @@ bool SSHKeyGuard::webStop()
         !enabled;
 }
 
-
-// ============================================================
-// WEB RESTART
-// ============================================================
 
 bool SSHKeyGuard::webRestart()
 {
@@ -3530,10 +3189,6 @@ bool SSHKeyGuard::webRestart()
     return isServiceActive();
 }
 
-
-// ============================================================
-// WEB STATUS
-// ============================================================
 
 std::string SSHKeyGuard::webStatus()
 {
@@ -3686,10 +3341,6 @@ std::string SSHKeyGuard::webStatus()
 }
 
 
-// ============================================================
-// WEB BASELINE
-// ============================================================
-
 bool SSHKeyGuard::webBaseline()
 {
     if (!scriptExists())
@@ -3715,10 +3366,6 @@ bool SSHKeyGuard::webBaseline()
 }
 
 
-// ============================================================
-// WEB SCAN
-// ============================================================
-
 bool SSHKeyGuard::webScan()
 {
     if (!scriptExists())
@@ -3743,10 +3390,6 @@ bool SSHKeyGuard::webScan()
     );
 }
 
-
-// ============================================================
-// WEB EVENTS
-// ============================================================
 
 std::string SSHKeyGuard::webEvents()
 {
@@ -3784,10 +3427,6 @@ std::string SSHKeyGuard::webEvents()
 }
 
 
-// ============================================================
-// WEB LOGS
-// ============================================================
-
 std::string SSHKeyGuard::webLogs()
 {
     if (!serviceExists())
@@ -3821,10 +3460,6 @@ std::string SSHKeyGuard::webLogs()
     return output;
 }
 
-
-// ============================================================
-// WEB AUDIT
-// ============================================================
 
 bool SSHKeyGuard::webAudit()
 {
@@ -3862,10 +3497,6 @@ bool SSHKeyGuard::webAudit()
     );
 }
 
-
-// ============================================================
-// WEB UPDATE
-// ============================================================
 
 bool SSHKeyGuard::webUpdate()
 {
