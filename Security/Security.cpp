@@ -2810,6 +2810,7 @@ long long Security::webThreats()
                 output[numberStart]
                 )
         )
+        )
     {
         ++numberStart;
     }
