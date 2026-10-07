@@ -1,27 +1,3 @@
-// ============================================================
-// TelegramBot.cpp — ЯДРО класса.
-//
-// Здесь находится всё, что НЕ относится к отдельным операциям
-// установки/обновления/удаления/старта/стопа/рестарта/
-// автозапуска/генерации кода (они вынесены в свои папки —
-// см. карту в TelegramBot.h). А именно:
-//
-//   - конструктор
-//   - выполнение команд по SSH (executeRemote), sudo-аутентификация
-//   - проверка root/sudo, наличия команд
-//   - установка python3/venv/pip/aiogram
-//   - скачивание, распаковка, валидация и установка
-//     GitHub-репозитория бота
-//   - конфиг бота (BOT_TOKEN), systemd unit-файл, reload systemd
-//   - startService() — общий хелпер запуска (используется
-//     install/update/restart/меню)
-//   - проверки serviceExists/serviceIsActive/checkScript
-//   - бэкап/очистка/восстановление кода бота
-//   - обновление python-библиотек
-//   - консольное меню (menu)
-//   - web-статус и web-логи (webStatus, webLogs, webStart)
-// ============================================================
-
 #include "TelegramBot.h"
 #include "TelegramBotInternal.h"
 
@@ -30,11 +6,6 @@
 #include <sstream>
 #include <thread>
 #include <chrono>
-
-
-// ============================================================
-// CONSTRUCTOR
-// ============================================================
 
 TelegramBot::TelegramBot(
     LIBSSH2_SESSION* sshSession,
@@ -49,11 +20,6 @@ TelegramBot::TelegramBot(
 
     sudoAuthenticated = false;
 }
-
-
-// ============================================================
-// EXECUTE REMOTE COMMAND
-// ============================================================
 
 bool TelegramBot::executeRemote(
     const std::string& command,
@@ -75,11 +41,6 @@ bool TelegramBot::executeRemote(
 
     std::string finalCommand = command;
 
-
-    // ========================================================
-    // SUDO
-    // ========================================================
-
     if (useSudo && sudoRequired)
     {
         if (!sudoAuthenticated)
@@ -97,11 +58,6 @@ bool TelegramBot::executeRemote(
             shellQuote(command);
     }
 
-
-    // ========================================================
-    // OPEN CHANNEL
-    // ========================================================
-
     LIBSSH2_CHANNEL* channel =
         libssh2_channel_open_session(session);
 
@@ -112,16 +68,10 @@ bool TelegramBot::executeRemote(
         return false;
     }
 
-
     libssh2_channel_handle_extended_data2(
         channel,
         LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE
     );
-
-
-    // ========================================================
-    // EXECUTE
-    // ========================================================
 
     if (libssh2_channel_exec(channel, finalCommand.c_str()) != 0)
     {
@@ -132,18 +82,13 @@ bool TelegramBot::executeRemote(
         return false;
     }
 
-
-    // ========================================================
-    // READ OUTPUT
-    // ========================================================
-
     char buffer[4096];
 
     while (true)
     {
         int rc = static_cast<int>(
             libssh2_channel_read(channel, buffer, sizeof(buffer) - 1)
-        );
+            );
 
         if (rc > 0)
         {
@@ -172,27 +117,18 @@ bool TelegramBot::executeRemote(
         break;
     }
 
-
     libssh2_channel_send_eof(channel);
 
     libssh2_channel_wait_eof(channel);
 
     libssh2_channel_wait_closed(channel);
 
-
     exitCode = libssh2_channel_get_exit_status(channel);
-
 
     libssh2_channel_free(channel);
 
-
     return exitCode == 0;
 }
-
-
-// ============================================================
-// AUTHENTICATE SUDO
-// ============================================================
 
 bool TelegramBot::authenticateSudo()
 {
@@ -217,7 +153,6 @@ bool TelegramBot::authenticateSudo()
 
     std::cout << "Authenticating sudo...\n";
 
-
     LIBSSH2_CHANNEL* channel =
         libssh2_channel_open_session(session);
 
@@ -228,7 +163,6 @@ bool TelegramBot::authenticateSudo()
         return false;
     }
 
-
     libssh2_channel_request_pty(channel, "xterm");
 
     libssh2_channel_handle_extended_data2(
@@ -236,9 +170,7 @@ bool TelegramBot::authenticateSudo()
         LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE
     );
 
-
     const char* command = "sudo -S -p '' -v";
-
 
     if (libssh2_channel_exec(channel, command) != 0)
     {
@@ -247,11 +179,9 @@ bool TelegramBot::authenticateSudo()
         return false;
     }
 
-
     std::string password = sudoPassword + "\n";
 
     size_t totalWritten = 0;
-
 
     while (totalWritten < password.size())
     {
@@ -261,7 +191,7 @@ bool TelegramBot::authenticateSudo()
                 password.c_str() + totalWritten,
                 password.size() - totalWritten
             )
-        );
+            );
 
         if (written < 0)
         {
@@ -278,20 +208,17 @@ bool TelegramBot::authenticateSudo()
         totalWritten += static_cast<size_t>(written);
     }
 
-
     libssh2_channel_send_eof(channel);
-
 
     char buffer[4096];
 
     std::string output;
 
-
     while (true)
     {
         int rc = static_cast<int>(
             libssh2_channel_read(channel, buffer, sizeof(buffer) - 1)
-        );
+            );
 
         if (rc > 0)
         {
@@ -320,17 +247,13 @@ bool TelegramBot::authenticateSudo()
         break;
     }
 
-
     libssh2_channel_wait_eof(channel);
 
     libssh2_channel_wait_closed(channel);
 
-
     int exitCode = libssh2_channel_get_exit_status(channel);
 
-
     libssh2_channel_free(channel);
-
 
     if (exitCode == 0)
     {
@@ -341,25 +264,17 @@ bool TelegramBot::authenticateSudo()
         return true;
     }
 
-
     sudoAuthenticated = false;
 
     std::cout << "Sudo authentication failed.\n";
-
 
     if (!output.empty())
     {
         std::cout << output << "\n";
     }
 
-
     return false;
 }
-
-
-// ============================================================
-// COMMAND EXISTS
-// ============================================================
 
 bool TelegramBot::commandExists(const std::string& command)
 {
@@ -367,28 +282,19 @@ bool TelegramBot::commandExists(const std::string& command)
 
     int exitCode = -1;
 
-
     std::string remoteCommand =
         "command -v " + shellQuote(command) + " >/dev/null 2>&1";
 
-
     executeRemote(remoteCommand, output, exitCode, false);
-
 
     return exitCode == 0;
 }
-
-
-// ============================================================
-// ROOT / SUDO
-// ============================================================
 
 bool TelegramBot::checkRootOrSudo()
 {
     std::string output;
 
     int exitCode = -1;
-
 
     if (!executeRemote("id -u", output, exitCode, false))
     {
@@ -397,13 +303,11 @@ bool TelegramBot::checkRootOrSudo()
         return false;
     }
 
-
     std::stringstream stream(output);
 
     int uid = -1;
 
     stream >> uid;
-
 
     if (uid == 0)
     {
@@ -416,7 +320,6 @@ bool TelegramBot::checkRootOrSudo()
         return true;
     }
 
-
     if (!commandExists("sudo"))
     {
         std::cout << "sudo is not installed.\n";
@@ -424,9 +327,7 @@ bool TelegramBot::checkRootOrSudo()
         return false;
     }
 
-
     sudoRequired = true;
-
 
     if (!authenticateSudo())
     {
@@ -435,31 +336,22 @@ bool TelegramBot::checkRootOrSudo()
         return false;
     }
 
-
     return true;
 }
-
-
-// ============================================================
-// CREATE DIRECTORIES
-// ============================================================
 
 bool TelegramBot::createDirectories()
 {
     std::cout << "Creating Telegram directories...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     std::string command =
         "mkdir -p " +
         shellQuote(TELEGRAM_DIR) +
         " " +
         shellQuote(TELEGRAM_QUEUE);
-
 
     if (!executeRemote(command, output, exitCode, true))
     {
@@ -473,26 +365,14 @@ bool TelegramBot::createDirectories()
         return false;
     }
 
-
     std::cout << "Telegram directories created.\n";
-
 
     return true;
 }
 
-
-// ============================================================
-// INSTALL PYTHON DEPENDENCIES
-// ============================================================
-
 bool TelegramBot::installPythonDependencies()
 {
     std::cout << "\nChecking Python environment...\n";
-
-
-    // ========================================================
-    // PYTHON3
-    // ========================================================
 
     if (!commandExists("python3"))
     {
@@ -500,11 +380,9 @@ bool TelegramBot::installPythonDependencies()
 
         std::cout << "Installing Python3...\n";
 
-
         std::string output;
 
         int exitCode = -1;
-
 
         if (!executeRemote(
             "apt-get update && "
@@ -524,11 +402,6 @@ bool TelegramBot::installPythonDependencies()
         }
     }
 
-
-    // ========================================================
-    // APT
-    // ========================================================
-
     if (!commandExists("apt-get"))
     {
         std::cout << "apt-get not found.\n";
@@ -536,18 +409,11 @@ bool TelegramBot::installPythonDependencies()
         return false;
     }
 
-
-    // ========================================================
-    // VENV / PIP / CURL / UNZIP
-    // ========================================================
-
     std::cout << "Checking Python packages...\n";
-
 
     std::string output;
 
     int exitCode = -1;
-
 
     if (!executeRemote(
         "apt-get update && "
@@ -570,16 +436,9 @@ bool TelegramBot::installPythonDependencies()
         return false;
     }
 
-
-    // ========================================================
-    // CREATE VENV ONLY IF MISSING
-    // ========================================================
-
     std::cout << "Checking Telegram virtual environment...\n";
 
-
     std::string venvPython = TELEGRAM_VENV + "/bin/python";
-
 
     bool venvExists = executeRemote(
         "test -x " + shellQuote(venvPython),
@@ -588,13 +447,11 @@ bool TelegramBot::installPythonDependencies()
         false
     );
 
-
     if (!venvExists)
     {
         std::cout << "Virtual environment not found.\n";
 
         std::cout << "Creating virtual environment...\n";
-
 
         if (!executeRemote(
             "rm -rf " +
@@ -615,7 +472,6 @@ bool TelegramBot::installPythonDependencies()
             return false;
         }
 
-
         std::cout << "Virtual environment created.\n";
     }
     else
@@ -623,15 +479,9 @@ bool TelegramBot::installPythonDependencies()
         std::cout << "Virtual environment already exists.\n";
     }
 
-
-    // ========================================================
-    // CHECK PYTHON
-    // ========================================================
-
     output.clear();
 
     exitCode = -1;
-
 
     if (!executeRemote(
         shellQuote(venvPython) + " --version",
@@ -645,24 +495,16 @@ bool TelegramBot::installPythonDependencies()
         return false;
     }
 
-
     if (!output.empty())
     {
         std::cout << output;
     }
 
-
-    // ========================================================
-    // CHECK AIOGRAM
-    // ========================================================
-
     std::cout << "Checking aiogram...\n";
-
 
     output.clear();
 
     exitCode = -1;
-
 
     bool aiogramInstalled = executeRemote(
         shellQuote(venvPython) + " -c \"import aiogram\"",
@@ -671,18 +513,15 @@ bool TelegramBot::installPythonDependencies()
         false
     );
 
-
     if (!aiogramInstalled)
     {
         std::cout << "aiogram is not installed.\n";
 
         std::cout << "Installing aiogram...\n";
 
-
         output.clear();
 
         exitCode = -1;
-
 
         if (!executeRemote(
             shellQuote(venvPython) + " -m pip install aiogram",
@@ -699,7 +538,6 @@ bool TelegramBot::installPythonDependencies()
             return false;
         }
 
-
         std::cout << "aiogram installed.\n";
     }
     else
@@ -707,21 +545,14 @@ bool TelegramBot::installPythonDependencies()
         std::cout << "aiogram is already installed.\n";
     }
 
-
     return true;
 }
-
-
-// ============================================================
-// CHECK SCRIPT
-// ============================================================
 
 bool TelegramBot::checkScript()
 {
     std::string output;
 
     int exitCode = -1;
-
 
     executeRemote(
         "test -f " + shellQuote(TELEGRAM_SCRIPT),
@@ -730,14 +561,8 @@ bool TelegramBot::checkScript()
         false
     );
 
-
     return exitCode == 0;
 }
-
-
-// ============================================================
-// ENSURE UNZIP
-// ============================================================
 
 bool TelegramBot::ensureUnzip()
 {
@@ -746,16 +571,13 @@ bool TelegramBot::ensureUnzip()
         return true;
     }
 
-
     std::cout << "unzip is not installed.\n";
 
     std::cout << "Installing unzip...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     if (!executeRemote(
         "apt-get update && "
@@ -776,14 +598,8 @@ bool TelegramBot::ensureUnzip()
         return false;
     }
 
-
     return commandExists("unzip");
 }
-
-
-// ============================================================
-// DOWNLOAD REPOSITORY ARCHIVE
-// ============================================================
 
 bool TelegramBot::downloadRepositoryArchive(const std::string& archivePath)
 {
@@ -791,11 +607,9 @@ bool TelegramBot::downloadRepositoryArchive(const std::string& archivePath)
 
     std::cout << "Repository:\n" << GITHUB_TELEGRAM_REPOSITORY_ZIP << "\n\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     std::string command =
         "rm -f " +
@@ -811,7 +625,6 @@ bool TelegramBot::downloadRepositoryArchive(const std::string& archivePath)
         " " +
         shellQuote(GITHUB_TELEGRAM_REPOSITORY_ZIP);
 
-
     if (!executeRemote(command, output, exitCode, true))
     {
         std::cout << "Repository download failed.\n";
@@ -824,11 +637,9 @@ bool TelegramBot::downloadRepositoryArchive(const std::string& archivePath)
         return false;
     }
 
-
     output.clear();
 
     exitCode = -1;
-
 
     if (!executeRemote(
         "test -s " + shellQuote(archivePath),
@@ -842,17 +653,10 @@ bool TelegramBot::downloadRepositoryArchive(const std::string& archivePath)
         return false;
     }
 
-
     std::cout << "Repository archive downloaded successfully.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// EXTRACT REPOSITORY
-// ============================================================
 
 bool TelegramBot::extractRepository(
     const std::string& archivePath,
@@ -866,10 +670,6 @@ bool TelegramBot::extractRepository(
 
     std::string output;
     int exitCode = -1;
-
-    // ========================================================
-    // CLEAN + CREATE DIRECTORY
-    // ========================================================
 
     std::string command =
         "rm -rf " +
@@ -894,17 +694,6 @@ bool TelegramBot::extractRepository(
 
         return false;
     }
-
-    // ========================================================
-    // FIND telegram_bot.py ANYWHERE IN EXTRACTED REPOSITORY
-    //
-    // The GitHub repository sometimes ships the bot code
-    // packed inside a NESTED .zip file instead of raw files.
-    // If telegram_bot.py is not found directly, look for any
-    // .zip files inside the extracted tree and unpack them in
-    // place, then search again. Repeat until the script is
-    // found or there is nothing left to unpack.
-    // ========================================================
 
     std::cout << "Searching extracted repository for telegram_bot.py...\n";
 
@@ -937,8 +726,6 @@ bool TelegramBot::extractRepository(
             break;
         }
 
-        // Not found yet - look for nested zip archives.
-
         output.clear();
         exitCode = -1;
 
@@ -954,7 +741,6 @@ bool TelegramBot::extractRepository(
 
         if (nestedZips.empty())
         {
-            // Nothing left to unpack.
             break;
         }
 
@@ -995,15 +781,9 @@ bool TelegramBot::extractRepository(
                 {
                     std::cout << extractOutput << "\n";
                 }
-
-                // Keep trying other archives / iterations.
             }
         }
     }
-
-    // ========================================================
-    // SCRIPT NOT FOUND
-    // ========================================================
 
     if (mainScript.empty())
     {
@@ -1013,8 +793,6 @@ bool TelegramBot::extractRepository(
             "(including nested archives).\n";
 
         std::cout << "Extracted directory:\n" << extractDirectory << "\n";
-
-        // Show extracted files to make debugging easier.
 
         output.clear();
         exitCode = -1;
@@ -1033,10 +811,6 @@ bool TelegramBot::extractRepository(
 
         return false;
     }
-
-    // ========================================================
-    // DETERMINE DIRECTORY CONTAINING telegram_bot.py
-    // ========================================================
 
     output.clear();
     exitCode = -1;
@@ -1059,10 +833,6 @@ bool TelegramBot::extractRepository(
         return false;
     }
 
-    // ========================================================
-    // SHOW RESULT
-    // ========================================================
-
     std::cout << "Telegram bot entry point found:\n" << mainScript << "\n";
 
     std::cout << "Repository root:\n" << repositoryRoot << "\n";
@@ -1070,17 +840,9 @@ bool TelegramBot::extractRepository(
     return true;
 }
 
-// ============================================================
-// VALIDATE REPOSITORY
-// ============================================================
-
 bool TelegramBot::validateRepository(const std::string& repositoryRoot)
 {
     std::cout << "\nValidating Telegram repository...\n";
-
-    // ========================================================
-    // MAIN SCRIPT
-    // ========================================================
 
     std::string mainScript = repositoryRoot + "/telegram_bot.py";
 
@@ -1092,8 +854,6 @@ bool TelegramBot::validateRepository(const std::string& repositoryRoot)
         std::cout << "ERROR: telegram_bot.py was not found.\n";
 
         std::cout << "Expected:\n" << mainScript << "\n";
-
-        // Extra diagnostic search.
 
         output.clear();
         exitCode = -1;
@@ -1118,10 +878,6 @@ bool TelegramBot::validateRepository(const std::string& repositoryRoot)
 
     std::cout << "Main Telegram bot file found:\n" << mainScript << "\n";
 
-    // ========================================================
-    // CHECK REPOSITORY CONTENT
-    // ========================================================
-
     std::cout << "\nChecking repository contents...\n";
 
     output.clear();
@@ -1138,10 +894,6 @@ bool TelegramBot::validateRepository(const std::string& repositoryRoot)
     {
         std::cout << output << "\n";
     }
-
-    // ========================================================
-    // PYTHON SYNTAX
-    // ========================================================
 
     std::cout << "Checking Python syntax for repository...\n";
 
@@ -1169,10 +921,6 @@ bool TelegramBot::validateRepository(const std::string& repositoryRoot)
 
     std::cout << "All Python files passed syntax validation.\n";
 
-    // ========================================================
-    // REMOVE PYTHON CACHE
-    // ========================================================
-
     output.clear();
     exitCode = -1;
 
@@ -1191,19 +939,13 @@ bool TelegramBot::validateRepository(const std::string& repositoryRoot)
     return true;
 }
 
-// ============================================================
-// SET REPOSITORY PERMISSIONS
-// ============================================================
-
 bool TelegramBot::setRepositoryPermissions()
 {
     std::cout << "\nConfiguring Telegram repository permissions...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     std::string command =
         "find " +
@@ -1230,7 +972,6 @@ bool TelegramBot::setRepositoryPermissions()
         "chown -R root:root " +
         shellQuote(TELEGRAM_DIR);
 
-
     if (!executeRemote(command, output, exitCode, true))
     {
         std::cout << "Cannot configure repository permissions.\n";
@@ -1242,11 +983,6 @@ bool TelegramBot::setRepositoryPermissions()
 
         return false;
     }
-
-
-    // ========================================================
-    // RESTORE PRIVATE RUNTIME PERMISSIONS
-    // ========================================================
 
     command =
         "chmod 600 " +
@@ -1265,36 +1001,20 @@ bool TelegramBot::setRepositoryPermissions()
         shellQuote(TELEGRAM_VENV) +
         " 2>/dev/null || true";
 
-
     executeRemote(command, output, exitCode, true);
-
 
     std::cout << "Repository permissions configured.\n";
 
-
     return true;
 }
-
-
-// ============================================================
-// INSTALL REPOSITORY FILES
-// ============================================================
 
 bool TelegramBot::installRepositoryFiles(const std::string& repositoryRoot)
 {
     std::cout << "\nInstalling Telegram repository files...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
-
-    // ========================================================
-    // COPY EVERYTHING FROM REPOSITORY
-    //
-    // Runtime files are explicitly excluded.
-    // ========================================================
 
     std::string command =
         "find " +
@@ -1309,7 +1029,6 @@ bool TelegramBot::installRepositoryFiles(const std::string& repositoryRoot)
         shellQuote(TELEGRAM_DIR) +
         "/ \\;";
 
-
     if (!executeRemote(command, output, exitCode, true))
     {
         std::cout << "Cannot install repository files.\n";
@@ -1322,45 +1041,28 @@ bool TelegramBot::installRepositoryFiles(const std::string& repositoryRoot)
         return false;
     }
 
-
     if (!setRepositoryPermissions())
     {
         return false;
     }
 
-
     std::cout << "Telegram repository installed successfully.\n";
-
 
     return true;
 }
 
-
-// ============================================================
-// DOWNLOAD BOT (repository download + extract + validate + install)
-//
-// Общий хелпер, используется как install(), так и updateBot().
-// ============================================================
-
 bool TelegramBot::downloadBot()
 {
     std::cout << "\nDownloading Telegram bot repository...\n";
-
 
     if (!ensureUnzip())
     {
         return false;
     }
 
-
-    // ========================================================
-    // CLEAN TEMP
-    // ========================================================
-
     std::string output;
 
     int exitCode = -1;
-
 
     executeRemote(
         "rm -rf " +
@@ -1372,23 +1074,12 @@ bool TelegramBot::downloadBot()
         true
     );
 
-
-    // ========================================================
-    // DOWNLOAD ZIP
-    // ========================================================
-
     if (!downloadRepositoryArchive(TELEGRAM_UPDATE_ZIP))
     {
         return false;
     }
 
-
-    // ========================================================
-    // EXTRACT
-    // ========================================================
-
     std::string repositoryRoot;
-
 
     if (!extractRepository(TELEGRAM_UPDATE_ZIP, TELEGRAM_UPDATE_DIR, repositoryRoot))
     {
@@ -1404,11 +1095,6 @@ bool TelegramBot::downloadBot()
 
         return false;
     }
-
-
-    // ========================================================
-    // VALIDATE
-    // ========================================================
 
     if (!validateRepository(repositoryRoot))
     {
@@ -1427,11 +1113,6 @@ bool TelegramBot::downloadBot()
         return false;
     }
 
-
-    // ========================================================
-    // INSTALL
-    // ========================================================
-
     if (!installRepositoryFiles(repositoryRoot))
     {
         std::cout << "\nFailed to install Telegram repository.\n";
@@ -1449,11 +1130,6 @@ bool TelegramBot::downloadBot()
         return false;
     }
 
-
-    // ========================================================
-    // CLEAN TEMP
-    // ========================================================
-
     executeRemote(
         "rm -rf " +
         shellQuote(TELEGRAM_UPDATE_DIR) +
@@ -1464,18 +1140,12 @@ bool TelegramBot::downloadBot()
         true
     );
 
-
-    // ========================================================
-    // FINAL CHECK
-    // ========================================================
-
     if (!checkScript())
     {
         std::cout << "Telegram bot script is missing after installation.\n";
 
         return false;
     }
-
 
     if (!checkPythonSyntax(TELEGRAM_SCRIPT))
     {
@@ -1484,24 +1154,16 @@ bool TelegramBot::downloadBot()
         return false;
     }
 
-
     std::cout << "\nTelegram bot repository installed successfully.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// CONFIG EXISTS
-// ============================================================
 
 bool TelegramBot::configExists()
 {
     std::string output;
 
     int exitCode = -1;
-
 
     executeRemote(
         "test -s " + shellQuote(TELEGRAM_CONFIG),
@@ -1510,19 +1172,12 @@ bool TelegramBot::configExists()
         false
     );
 
-
     return exitCode == 0;
 }
-
-
-// ============================================================
-// READ BOT TOKEN
-// ============================================================
 
 std::string TelegramBot::readBotToken()
 {
     std::string token;
-
 
     std::cout << "\n";
 
@@ -1532,17 +1187,10 @@ std::string TelegramBot::readBotToken()
 
     std::cout << "Enter token: ";
 
-
     std::getline(std::cin >> std::ws, token);
-
 
     return token;
 }
-
-
-// ============================================================
-// CREATE CONFIG
-// ============================================================
 
 bool TelegramBot::createConfig()
 {
@@ -1555,12 +1203,9 @@ bool TelegramBot::createConfig()
         return true;
     }
 
-
     std::cout << "\nConfiguring Telegram bot...\n";
 
-
     std::string token = readBotToken();
-
 
     if (token.empty())
     {
@@ -1569,13 +1214,7 @@ bool TelegramBot::createConfig()
         return false;
     }
 
-
-    // ========================================================
-    // BASIC TOKEN VALIDATION
-    // ========================================================
-
     std::size_t colon = token.find(':');
-
 
     if (colon == std::string::npos || colon == 0 || colon == token.size() - 1)
     {
@@ -1588,12 +1227,9 @@ bool TelegramBot::createConfig()
         return false;
     }
 
-
     std::string config = "BOT_TOKEN=" + token + "\n";
 
-
     std::string encoded = base64Encode(config);
-
 
     std::string command =
         "echo " +
@@ -1607,11 +1243,9 @@ bool TelegramBot::createConfig()
         "chown root:root " +
         shellQuote(TELEGRAM_CONFIG);
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     if (!executeRemote(command, output, exitCode, true))
     {
@@ -1625,9 +1259,7 @@ bool TelegramBot::createConfig()
         return false;
     }
 
-
     std::cout << "Telegram configuration created.\n";
-
 
     return true;
 }
@@ -1636,10 +1268,6 @@ bool TelegramBot::createConfig(
     const std::string& token
 )
 {
-    // ========================================================
-    // EXISTING CONFIG
-    // ========================================================
-
     if (configExists())
     {
         std::cout
@@ -1651,11 +1279,6 @@ bool TelegramBot::createConfig(
         return true;
     }
 
-
-    // ========================================================
-    // VALIDATE TOKEN
-    // ========================================================
-
     if (token.empty())
     {
         std::cout
@@ -1664,14 +1287,8 @@ bool TelegramBot::createConfig(
         return false;
     }
 
-
-    // ========================================================
-    // BASIC TELEGRAM TOKEN FORMAT CHECK
-    // ========================================================
-
     std::size_t colon =
         token.find(':');
-
 
     if (
         colon == std::string::npos ||
@@ -1691,18 +1308,11 @@ bool TelegramBot::createConfig(
         return false;
     }
 
-
-    // ========================================================
-    // CREATE CONFIG
-    // ========================================================
-
     std::string config =
         "BOT_TOKEN=" + token + "\n";
 
-
     std::string encoded =
         base64Encode(config);
-
 
     std::string command =
         "echo "
@@ -1714,11 +1324,9 @@ bool TelegramBot::createConfig(
         + " && chown root:root "
         + shellQuote(TELEGRAM_CONFIG);
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     if (
         !executeRemote(
@@ -1737,11 +1345,6 @@ bool TelegramBot::createConfig(
         return false;
     }
 
-
-    // ========================================================
-    // VERIFY CONFIG
-    // ========================================================
-
     if (!configExists())
     {
         std::cout
@@ -1750,24 +1353,17 @@ bool TelegramBot::createConfig(
         return false;
     }
 
-
     std::cout
         << "Telegram configuration created successfully.\n";
 
-
     return true;
 }
-// ============================================================
-// CREATE SYSTEMD SERVICE
-// ============================================================
 
 bool TelegramBot::createSystemdService()
 {
     std::cout << "\nCreating Telegram systemd service...\n";
 
-
     std::string service;
-
 
     service += "[Unit]\n";
 
@@ -1776,7 +1372,6 @@ bool TelegramBot::createSystemdService()
     service += "After=network-online.target\n";
 
     service += "Wants=network-online.target\n\n";
-
 
     service += "[Service]\n";
 
@@ -1798,18 +1393,11 @@ bool TelegramBot::createSystemdService()
 
     service += "NoNewPrivileges=false\n\n";
 
-
     service += "[Install]\n";
 
     service += "WantedBy=multi-user.target\n";
 
-
-    // ========================================================
-    // BASE64
-    // ========================================================
-
     std::string encoded = base64Encode(service);
-
 
     std::string command =
         "echo " +
@@ -1817,11 +1405,9 @@ bool TelegramBot::createSystemdService()
         " | base64 -d > " +
         shellQuote(TELEGRAM_SERVICE_PATH);
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     if (!executeRemote(command, output, exitCode, true))
     {
@@ -1830,11 +1416,6 @@ bool TelegramBot::createSystemdService()
         return false;
     }
 
-
-    // ========================================================
-    // PERMISSIONS
-    // ========================================================
-
     command =
         "chmod 644 " +
         shellQuote(TELEGRAM_SERVICE_PATH) +
@@ -1842,11 +1423,9 @@ bool TelegramBot::createSystemdService()
         "chown root:root " +
         shellQuote(TELEGRAM_SERVICE_PATH);
 
-
     output.clear();
 
     exitCode = -1;
-
 
     if (!executeRemote(command, output, exitCode, true))
     {
@@ -1855,27 +1434,18 @@ bool TelegramBot::createSystemdService()
         return false;
     }
 
-
     std::cout << "Telegram systemd service created.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// RELOAD SYSTEMD
-// ============================================================
 
 bool TelegramBot::reloadSystemd()
 {
     std::cout << "\nReloading systemd...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     if (!executeRemote("systemctl daemon-reload", output, exitCode, true))
     {
@@ -1889,27 +1459,18 @@ bool TelegramBot::reloadSystemd()
         return false;
     }
 
-
     std::cout << "systemd reloaded.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// START  (общий хелпер запуска — используется install/update/restart/меню)
-// ============================================================
 
 bool TelegramBot::startService()
 {
     std::cout << "\nStarting Telegram bot...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     if (!executeRemote("systemctl start " + TELEGRAM_SERVICE, output, exitCode, true))
     {
@@ -1923,24 +1484,16 @@ bool TelegramBot::startService()
         return false;
     }
 
-
     std::cout << "Telegram bot started.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// SERVICE EXISTS
-// ============================================================
 
 bool TelegramBot::serviceExists()
 {
     std::string output;
 
     int exitCode = -1;
-
 
     executeRemote(
         "test -f " + shellQuote(TELEGRAM_SERVICE_PATH),
@@ -1949,21 +1502,14 @@ bool TelegramBot::serviceExists()
         false
     );
 
-
     return exitCode == 0;
 }
-
-
-// ============================================================
-// SERVICE ACTIVE
-// ============================================================
 
 bool TelegramBot::serviceIsActive()
 {
     std::string output;
 
     int exitCode = -1;
-
 
     executeRemote(
         "systemctl is-active --quiet " + TELEGRAM_SERVICE,
@@ -1972,17 +1518,8 @@ bool TelegramBot::serviceIsActive()
         false
     );
 
-
     return exitCode == 0;
 }
-
-
-// ============================================================
-// DOWNLOAD UPDATE FILE
-//
-// Универсальный хелпер скачивания одного файла. Используется
-// другими операциями обновления.
-// ============================================================
 
 bool TelegramBot::downloadUpdateFile(
     const std::string& url,
@@ -1991,11 +1528,9 @@ bool TelegramBot::downloadUpdateFile(
 {
     std::cout << "Downloading:\n" << url << "\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     std::string command =
         "curl -fL --silent --show-error "
@@ -2007,7 +1542,6 @@ bool TelegramBot::downloadUpdateFile(
         shellQuote(destination) +
         " " +
         shellQuote(url);
-
 
     if (!executeRemote(command, output, exitCode, true))
     {
@@ -2021,11 +1555,9 @@ bool TelegramBot::downloadUpdateFile(
         return false;
     }
 
-
     output.clear();
 
     exitCode = -1;
-
 
     if (!executeRemote(
         "test -s " + shellQuote(destination),
@@ -2039,30 +1571,20 @@ bool TelegramBot::downloadUpdateFile(
         return false;
     }
 
-
     std::cout << "Download successful.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// CHECK PYTHON SYNTAX
-// ============================================================
 
 bool TelegramBot::checkPythonSyntax(const std::string& file)
 {
     std::cout << "Checking Python syntax:\n" << file << "\n";
 
-
     std::string output;
 
     int exitCode = -1;
 
-
     std::string python = TELEGRAM_VENV + "/bin/python";
-
 
     if (!executeRemote(
         shellQuote(python) + " -m py_compile " + shellQuote(file),
@@ -2081,17 +1603,10 @@ bool TelegramBot::checkPythonSyntax(const std::string& file)
         return false;
     }
 
-
     std::cout << "Python syntax is valid.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// REQUIREMENTS EXISTS
-// ============================================================
 
 bool TelegramBot::requirementsExists()
 {
@@ -2099,9 +1614,7 @@ bool TelegramBot::requirementsExists()
 
     int exitCode = -1;
 
-
     std::string requirements = TELEGRAM_DIR + "/requirements.txt";
-
 
     executeRemote(
         "test -s " + shellQuote(requirements),
@@ -2110,37 +1623,26 @@ bool TelegramBot::requirementsExists()
         false
     );
 
-
     return exitCode == 0;
 }
-
-
-// ============================================================
-// UPDATE REQUIREMENTS
-// ============================================================
 
 bool TelegramBot::updateRequirements()
 {
     std::cout << "\nUpdating Python libraries from requirements.txt...\n";
 
-
     std::string output;
 
     int exitCode = -1;
 
-
     std::string python = TELEGRAM_VENV + "/bin/python";
 
-
     std::string requirements = TELEGRAM_DIR + "/requirements.txt";
-
 
     std::string command =
         shellQuote(python) +
         " -m pip install --upgrade "
         "-r " +
         shellQuote(requirements);
-
 
     if (!executeRemote(command, output, exitCode, true))
     {
@@ -2154,23 +1656,15 @@ bool TelegramBot::updateRequirements()
         return false;
     }
 
-
     if (!output.empty())
     {
         std::cout << output;
     }
 
-
     std::cout << "Python libraries updated.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// UPDATE PYTHON LIBRARIES
-// ============================================================
 
 bool TelegramBot::updatePythonLibraries()
 {
@@ -2180,11 +1674,6 @@ bool TelegramBot::updatePythonLibraries()
 
     std::cout << "============================================\n\n";
 
-
-    // ========================================================
-    // REQUIREMENTS.TXT
-    // ========================================================
-
     if (requirementsExists())
     {
         std::cout << "requirements.txt found.\n";
@@ -2192,26 +1681,17 @@ bool TelegramBot::updatePythonLibraries()
         return updateRequirements();
     }
 
-
-    // ========================================================
-    // FALLBACK
-    // ========================================================
-
     std::cout << "requirements.txt was not found.\n";
 
     std::cout << "Using aiogram update fallback.\n";
-
 
     std::string output;
 
     int exitCode = -1;
 
-
     std::string python = TELEGRAM_VENV + "/bin/python";
 
-
     std::string command = shellQuote(python) + " -m pip install --upgrade aiogram";
-
 
     if (!executeRemote(command, output, exitCode, true))
     {
@@ -2225,37 +1705,23 @@ bool TelegramBot::updatePythonLibraries()
         return false;
     }
 
-
     if (!output.empty())
     {
         std::cout << output;
     }
 
-
     std::cout << "aiogram updated successfully.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// BACKUP TELEGRAM CODE
-//
-// Создаёт бэкап ВСЕГО кода бота. Runtime-данные (telegram.conf,
-// verification.json, owner.json, queue/, venv/) намеренно
-// исключены, т.к. хранятся напрямую в активной папке.
-// ============================================================
 
 bool TelegramBot::backupTelegramCode()
 {
     std::cout << "\nCreating complete Telegram bot backup...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     std::string command =
         "rm -rf " +
@@ -2277,7 +1743,6 @@ bool TelegramBot::backupTelegramCode()
         shellQuote(TELEGRAM_CODE_BACKUP) +
         "/ \\;";
 
-
     if (!executeRemote(command, output, exitCode, true))
     {
         std::cout << "Cannot create complete Telegram backup.\n";
@@ -2290,29 +1755,18 @@ bool TelegramBot::backupTelegramCode()
         return false;
     }
 
-
     std::cout << "Complete Telegram bot backup created:\n" << TELEGRAM_CODE_BACKUP << "\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// CLEAR TELEGRAM CODE
-//
-// Удаляет старый код бота, но сохраняет runtime-данные.
-// ============================================================
 
 bool TelegramBot::clearTelegramCode()
 {
     std::cout << "\nRemoving old Telegram bot code...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     std::string command =
         "find " +
@@ -2326,7 +1780,6 @@ bool TelegramBot::clearTelegramCode()
         "! -name .repository_update "
         "-exec rm -rf {} \\;";
 
-
     if (!executeRemote(command, output, exitCode, true))
     {
         std::cout << "Cannot remove old Telegram bot code.\n";
@@ -2339,27 +1792,18 @@ bool TelegramBot::clearTelegramCode()
         return false;
     }
 
-
     std::cout << "Old Telegram bot code removed.\n";
-
 
     return true;
 }
-
-
-// ============================================================
-// RESTORE TELEGRAM CODE
-// ============================================================
 
 bool TelegramBot::restoreTelegramCode()
 {
     std::cout << "\nRestoring previous Telegram bot version...\n";
 
-
     std::string output;
 
     int exitCode = -1;
-
 
     if (!clearTelegramCode())
     {
@@ -2368,9 +1812,7 @@ bool TelegramBot::restoreTelegramCode()
         return false;
     }
 
-
     std::string command = "test -d " + shellQuote(TELEGRAM_CODE_BACKUP);
-
 
     if (!executeRemote(command, output, exitCode, false))
     {
@@ -2379,7 +1821,6 @@ bool TelegramBot::restoreTelegramCode()
         return false;
     }
 
-
     command =
         "find " +
         shellQuote(TELEGRAM_CODE_BACKUP) +
@@ -2387,7 +1828,6 @@ bool TelegramBot::restoreTelegramCode()
         "-exec cp -a {} " +
         shellQuote(TELEGRAM_DIR) +
         "/ \\;";
-
 
     if (!executeRemote(command, output, exitCode, true))
     {
@@ -2401,20 +1841,12 @@ bool TelegramBot::restoreTelegramCode()
         return false;
     }
 
-
     setRepositoryPermissions();
-
 
     std::cout << "Previous Telegram bot version restored.\n";
 
-
     return true;
 }
-
-
-// ============================================================
-// SHOW UPDATE LOGS
-// ============================================================
 
 void TelegramBot::showUpdateLogs()
 {
@@ -2426,11 +1858,9 @@ void TelegramBot::showUpdateLogs()
 
     std::cout << "============================================\n\n";
 
-
     std::string logs;
 
     int exitCode = -1;
-
 
     executeRemote(
         "journalctl -u " + TELEGRAM_SERVICE + " -n 50 --no-pager",
@@ -2439,30 +1869,18 @@ void TelegramBot::showUpdateLogs()
         false
     );
 
-
     if (!logs.empty())
     {
         std::cout << logs;
     }
 
-
     std::cout << "\n";
 }
-
-
-// ============================================================
-// STATUS
-// ============================================================
 
 bool TelegramBot::isActive()
 {
     return serviceIsActive();
 }
-
-
-// ============================================================
-// MENU
-// ============================================================
 
 void TelegramBot::menu()
 {
@@ -2476,16 +1894,9 @@ void TelegramBot::menu()
 
         std::cout << "============================================\n\n";
 
-
         bool active = serviceIsActive();
 
-
         std::cout << "Telegram bot: " << (active ? "ACTIVE" : "INACTIVE") << "\n\n";
-
-
-        // ====================================================
-        // MENU
-        // ====================================================
 
         std::cout << "1. Install / configure bot\n";
 
@@ -2509,19 +1920,11 @@ void TelegramBot::menu()
 
         std::cout << "0. Back\n\n";
 
-
         std::cout << "Select: ";
-
 
         std::string choice;
 
-
         std::getline(std::cin >> std::ws, choice);
-
-
-        // ====================================================
-        // INSTALL / CONFIGURE  -> install/TelegramBot_Install.cpp
-        // ====================================================
 
         if (choice == "1")
         {
@@ -2530,22 +1933,12 @@ void TelegramBot::menu()
             continue;
         }
 
-
-        // ====================================================
-        // VERIFICATION -> generate_code/TelegramBot_GenerateCode.cpp
-        // ====================================================
-
         if (choice == "2")
         {
             generateCode();
 
             continue;
         }
-
-
-        // ====================================================
-        // START
-        // ====================================================
 
         if (choice == "3")
         {
@@ -2556,11 +1949,9 @@ void TelegramBot::menu()
                 continue;
             }
 
-
             if (startService())
             {
                 std::this_thread::sleep_for(std::chrono::seconds(1));
-
 
                 if (serviceIsActive())
                 {
@@ -2572,14 +1963,8 @@ void TelegramBot::menu()
                 }
             }
 
-
             continue;
         }
-
-
-        // ====================================================
-        // STOP -> stop/TelegramBot_Stop.cpp
-        // ====================================================
 
         if (choice == "4")
         {
@@ -2590,20 +1975,13 @@ void TelegramBot::menu()
                 continue;
             }
 
-
             if (stopService())
             {
                 std::cout << "Telegram bot stopped.\n";
             }
 
-
             continue;
         }
-
-
-        // ====================================================
-        // RESTART -> restart/TelegramBot_Restart.cpp
-        // ====================================================
 
         if (choice == "5")
         {
@@ -2614,26 +1992,17 @@ void TelegramBot::menu()
                 continue;
             }
 
-
             restartService();
 
-
             std::this_thread::sleep_for(std::chrono::seconds(1));
-
 
             if (serviceIsActive())
             {
                 std::cout << "Telegram bot is ACTIVE.\n";
             }
 
-
             continue;
         }
-
-
-        // ====================================================
-        // DISABLE -> autostart_disable/TelegramBot_DisableAutostart.cpp
-        // ====================================================
 
         if (choice == "6")
         {
@@ -2644,20 +2013,13 @@ void TelegramBot::menu()
                 continue;
             }
 
-
             if (disableService())
             {
                 std::cout << "Automatic startup disabled.\n";
             }
 
-
             continue;
         }
-
-
-        // ====================================================
-        // UPDATE -> update/TelegramBot_Update.cpp
-        // ====================================================
 
         if (choice == "7")
         {
@@ -2665,11 +2027,6 @@ void TelegramBot::menu()
 
             continue;
         }
-
-
-        // ====================================================
-        // STATUS
-        // ====================================================
 
         if (choice == "8")
         {
@@ -2680,11 +2037,9 @@ void TelegramBot::menu()
                 continue;
             }
 
-
             std::string output;
 
             int exitCode = -1;
-
 
             executeRemote(
                 "systemctl status " + TELEGRAM_SERVICE + " --no-pager",
@@ -2693,23 +2048,15 @@ void TelegramBot::menu()
                 false
             );
 
-
             std::cout << "\n";
-
 
             if (!output.empty())
             {
                 std::cout << output;
             }
 
-
             continue;
         }
-
-
-        // ====================================================
-        // LOGS
-        // ====================================================
 
         if (choice == "9")
         {
@@ -2720,11 +2067,9 @@ void TelegramBot::menu()
                 continue;
             }
 
-
             std::string output;
 
             int exitCode = -1;
-
 
             executeRemote(
                 "journalctl -u " + TELEGRAM_SERVICE + " -n 50 --no-pager",
@@ -2733,35 +2078,23 @@ void TelegramBot::menu()
                 false
             );
 
-
             std::cout << "\n";
-
 
             std::cout << "============================================\n";
 
-
             std::cout << "             TELEGRAM LOGS\n";
 
-
             std::cout << "============================================\n\n";
-
 
             if (!output.empty())
             {
                 std::cout << output;
             }
 
-
             std::cout << "\n";
-
 
             continue;
         }
-
-
-        // ====================================================
-        // REMOVE -> remove/TelegramBot_Remove.cpp
-        // ====================================================
 
         if (choice == "10")
         {
@@ -2772,18 +2105,13 @@ void TelegramBot::menu()
                 continue;
             }
 
-
             std::cout << "\nWARNING: This will remove the Telegram bot.\n";
-
 
             std::cout << "Continue? (yes/no): ";
 
-
             std::string confirmation;
 
-
             std::getline(std::cin >> std::ws, confirmation);
-
 
             if (confirmation == "yes")
             {
@@ -2794,29 +2122,17 @@ void TelegramBot::menu()
                 std::cout << "Cancelled.\n";
             }
 
-
             continue;
         }
-
-
-        // ====================================================
-        // BACK
-        // ====================================================
 
         if (choice == "0")
         {
             break;
         }
 
-
         std::cout << "Unknown option.\n";
     }
 }
-
-
-// ============================================================
-// WEB START
-// ============================================================
 
 bool TelegramBot::webStart()
 {
@@ -2827,11 +2143,6 @@ bool TelegramBot::webStart()
 
     return startService();
 }
-
-
-// ============================================================
-// WEB STATUS
-// ============================================================
 
 std::string TelegramBot::webStatus()
 {
@@ -2891,11 +2202,6 @@ std::string TelegramBot::webStatus()
 
     return json.str();
 }
-
-
-// ============================================================
-// WEB LOGS
-// ============================================================
 
 std::string TelegramBot::webLogs()
 {
