@@ -1,65 +1,5 @@
 #pragma once
 
-// ============================================================
-// TelegramBot.h — ПУБЛИЧНЫЙ интерфейс класса.
-//
-// КАРТА ФАЙЛОВ ПРОЕКТА (где что находится):
-// ------------------------------------------------------------
-//   TelegramBot.h                              — этот файл, объявление класса
-//   TelegramBotInternal.h                      — общие пути и хелперы (shellQuote,
-//                                                 base64Encode, trim), подключается
-//                                                 всеми .cpp файлами ниже
-//
-//   TelegramBot.cpp                            — ЯДРО: SSH-исполнение команд,
-//                                                 sudo, проверка root, установка
-//                                                 python/venv/aiogram, скачивание
-//                                                 и установка GitHub-репозитория
-//                                                 бота, конфиг, systemd unit-файл,
-//                                                 проверки статуса/скрипта,
-//                                                 бэкап/восстановление кода,
-//                                                 обновление python-библиотек,
-//                                                 консольное меню, web-статус/логи
-//
-//   install/TelegramBot_Install.cpp            — УСТАНОВКА бота
-//                                                 (install, webInstall)
-//
-//   update/TelegramBot_Update.cpp              — ОБНОВЛЕНИЕ бота
-//                                                 (updateBot, webUpdate)
-//
-//   remove/TelegramBot_Remove.cpp              — УДАЛЕНИЕ бота
-//                                                 (removeInstallation, webRemove)
-//
-//   restart/TelegramBot_Restart.cpp            — ПЕРЕЗАПУСК бота
-//                                                 (restartService, webRestart)
-//
-//   generate_code/TelegramBot_GenerateCode.cpp — ГЕНЕРАЦИЯ КОДА верификации
-//                                                 (generateRandomCode,
-//                                                  generateVerificationCode,
-//                                                  generateCode, webGenerateCode)
-//
-//   stop/TelegramBot_Stop.cpp                  — ОСТАНОВКА бота
-//                                                 (stopService, webStop)
-//
-//   autostart_enable/
-//       TelegramBot_EnableAutostart.cpp        — ВКЛЮЧЕНИЕ автозапуска
-//                                                 (enableService)
-//
-//   autostart_disable/
-//       TelegramBot_DisableAutostart.cpp       — ОТКЛЮЧЕНИЕ автозапуска
-//                                                 (disableService, webDisable)
-// ------------------------------------------------------------
-// Запуск бота (startService/webStart) отдельной папки не выделен
-// (в задаче явно не требовался) и остался в TelegramBot.cpp,
-// т.к. используется как внутренний хелпер почти во всех остальных
-// операциях (install/update/restart и т.д.).
-//
-// Все .cpp файлы — это просто определения методов ОДНОГО И ТОГО ЖЕ
-// класса TelegramBot в разных файлах (это разрешено в C++, если все
-// файлы попадают в один таргет сборки). Ничего в самом классе,
-// в его API и в поведении не меняется — меняется только физическое
-// расположение кода.
-// ============================================================
-
 #include <string>
 #include <libssh2.h>
 
@@ -74,11 +14,6 @@ private:
     bool sudoRequired;
     bool sudoAuthenticated;
 
-
-    // ========================================================
-    // SSH  (реализация: TelegramBot.cpp)
-    // ========================================================
-
     bool executeRemote(
         const std::string& command,
         std::string& output,
@@ -87,11 +22,6 @@ private:
     );
 
     bool authenticateSudo();
-
-
-    // ========================================================
-    // HELPERS
-    // ========================================================
 
     bool commandExists(
         const std::string& command
@@ -115,38 +45,34 @@ private:
     bool installInternal(
         const std::string* webToken
     );
+
     bool configExists();
 
     bool createSystemdService();
 
     bool reloadSystemd();
 
-    bool enableService();      // autostart_enable/TelegramBot_EnableAutostart.cpp
+    bool enableService();
 
-    bool startService();       // TelegramBot.cpp (общий хелпер)
+    bool startService();
 
-    bool stopService();        // stop/TelegramBot_Stop.cpp
+    bool stopService();
 
-    bool restartService();     // restart/TelegramBot_Restart.cpp
+    bool restartService();
 
-    bool disableService();     // autostart_disable/TelegramBot_DisableAutostart.cpp
+    bool disableService();
 
     bool serviceExists();
 
     bool serviceIsActive();
 
-    bool generateVerificationCode();   // generate_code/TelegramBot_GenerateCode.cpp
+    bool generateVerificationCode();
 
-    bool removeInstallation();         // remove/TelegramBot_Remove.cpp
+    bool removeInstallation();
 
-    std::string generateRandomCode();  // generate_code/TelegramBot_GenerateCode.cpp
+    std::string generateRandomCode();
 
     std::string readBotToken();
-
-
-    // ========================================================
-    // GITHUB REPOSITORY  (реализация: TelegramBot.cpp)
-    // ========================================================
 
     bool ensureUnzip();
 
@@ -170,12 +96,7 @@ private:
 
     bool setRepositoryPermissions();
 
-
-    // ========================================================
-    // UPDATE
-    // ========================================================
-
-    bool updateBot();   // update/TelegramBot_Update.cpp
+    bool updateBot();
 
     bool downloadUpdateFile(
         const std::string& url,
@@ -200,7 +121,6 @@ private:
 
     void showUpdateLogs();
 
-
 public:
 
     TelegramBot(
@@ -209,26 +129,24 @@ public:
     );
 
     void menu();
-    // ============================================================
-    // WEB API
-    // ============================================================
 
-    bool webInstall();          // install/TelegramBot_Install.cpp
+    bool webInstall();
     bool webInstall(const std::string& token);
-    bool webStart();            // TelegramBot.cpp
-    bool webStop();             // stop/TelegramBot_Stop.cpp
-    bool webRestart();          // restart/TelegramBot_Restart.cpp
-    bool webDisable();          // autostart_disable/TelegramBot_DisableAutostart.cpp
-    bool webUpdate();           // update/TelegramBot_Update.cpp
-    bool webGenerateCode();     // generate_code/TelegramBot_GenerateCode.cpp
-    bool webRemove();           // remove/TelegramBot_Remove.cpp
+    bool webStart();
+    bool webStop();
+    bool webRestart();
+    bool webDisable();
+    bool webUpdate();
+    bool webGenerateCode();
+    bool webRemove();
 
     std::string webStatus();
     std::string webLogs();
-    bool install();              // install/TelegramBot_Install.cpp
+
+    bool install();
     bool install(const std::string& token);
 
     bool isActive();
 
-    bool generateCode();         // generate_code/TelegramBot_GenerateCode.cpp
+    bool generateCode();
 };
