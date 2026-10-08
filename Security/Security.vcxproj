@@ -192,6 +192,7 @@
     <ClCompile Include="stop\TelegramBot_Stop.cpp" />
     <ClCompile Include="update\TelegramBot_Update.cpp" />
     <!-- Web -->
+    <ClCompile Include="Web.cpp" />
     <ClCompile Include="WebServer.cpp" />
   </ItemGroup>
   <!-- ====================================================== -->
@@ -205,6 +206,7 @@
     <ClInclude Include="SSHHardening.h" />
     <ClInclude Include="TelegramBot.h" />
     <ClInclude Include="TelegramBotInternal.h" />
+    <ClInclude Include="Web.h" />
     <ClInclude Include="WebServer.h" />
   </ItemGroup>
   <!-- ====================================================== -->

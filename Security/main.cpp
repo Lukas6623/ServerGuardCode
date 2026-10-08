@@ -23,6 +23,7 @@
 #include "SSHKeyGuard.h"
 #include "Help.h"
 #include "WebServer.h"
+#include "Web.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -1343,7 +1344,8 @@ void runServerTerminal(
     TelegramBot* telegramBot,
     SSHKeyGuard* sshKeyGuard,
     Security* security,
-    SSHHardening* sshHardening)
+    SSHHardening* sshHardening,
+    WebServer* webServer)
 {
     FileGuard fileGuard(session, cfg.password);
 
@@ -1358,6 +1360,8 @@ void runServerTerminal(
     std::cout << "Type 'hardening' to open SSH hardening menu.\n";
     std::cout << "Type 'sshkeys' to open SSH Key Guard menu.\n";
     std::cout << "Type 'fileguard' to open FileGuard menu.\n";
+    std::cout << "Type 'web install' to install the web interface.\n";
+    std::cout << "Type 'web status | web url | web remove' to manage it.\n";
     std::cout << "Type 'exit' to close connection.\n";
     std::cout << "\n";
     std::cout << "Type 'help' for detailed information.\n";
@@ -1392,6 +1396,22 @@ void runServerTerminal(
             showHelp();
 
             continue;
+        }
+
+        {
+            std::string lc = toLower(trim(command));
+
+            if (lc == "webinstall" || lc == "web-install")
+                lc = "web install";
+
+            if (lc == "web" || lc.rfind("web ", 0) == 0)
+            {
+                std::string arg = trim(lc.substr(3));
+
+                handleWebCommand(arg, webServer);
+
+                continue;
+            }
         }
 
         if (command == "security")
@@ -1486,7 +1506,7 @@ void runServerTerminal(
         std::cout
             << "Available commands: "
             << "help, ls, pwd, cd, security, telegram, "
-            << "hardening, sshkeys, fileguard, exit\n";
+            << "hardening, sshkeys, fileguard, web, exit\n";
     }
 }
 
@@ -1657,8 +1677,9 @@ int main()
         );
 
 
+        // Сайт читается из %LOCALAPPDATA%\ServerGuard\web
         WebServer webServer(
-            "C:\\Program Files\\ServerGuard\\web",
+            webRootPath(),
             "127.0.0.1",
             8472,
 
@@ -1682,7 +1703,8 @@ int main()
             else
             {
                 std::cout
-                    << "\nWarning: Web interface failed to start.\n";
+                    << "\nWeb interface is not installed. "
+                    "Type 'web install' to install it.\n";
             }
         }
 
@@ -1696,7 +1718,8 @@ int main()
             &telegramBot,
             &sshKeyGuard,
             &security,
-            &sshHardening
+            &sshHardening,
+            &webServer
         );
 
 
