@@ -176,6 +176,12 @@
   <ItemGroup>
     <!-- Core -->
     <ClCompile Include="FileGuard.cpp" />
+    <ClCompile Include="handlers\WebServer_Hardening.cpp" />
+    <ClCompile Include="handlers\WebServer_Security.cpp" />
+    <ClCompile Include="handlers\WebServer_ServerStats.cpp" />
+    <ClCompile Include="handlers\WebServer_SshKeyGuard.cpp" />
+    <ClCompile Include="handlers\WebServer_Stop.cpp" />
+    <ClCompile Include="handlers\WebServer_TelegramBot.cpp" />
     <ClCompile Include="Help.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="SSHKeyGuard.cpp" />
@@ -200,6 +206,7 @@
   <!-- ====================================================== -->
   <ItemGroup>
     <ClInclude Include="FileGuard.h" />
+    <ClInclude Include="handlers\WebServerHelpers.h" />
     <ClInclude Include="Help.h" />
     <ClInclude Include="SSHKeyGuard.h" />
     <ClInclude Include="Security.h" />
