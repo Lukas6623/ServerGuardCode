@@ -1,1255 +1,498 @@
 #include "SSHHardening.h"
 
-#include <iostream>
-#include <string>
-#include <vector>
-#include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
 
+static const std::string SERVERGUARD_DIR = "/opt/serverguard";
+static const std::string HARDENING_SCRIPT = "/opt/serverguard/ssh_hardening.py";
+static const std::string SSH_CONFIG = "/etc/ssh/sshd_config";
+static const std::string BACKUP_DIR = "/opt/serverguard/backups";
+static const std::string HARDENING_CONFIG = "/etc/ssh/sshd_config.d/99-serverguard-hardening.conf";
+static const std::string HARDENING_UPDATE_URL = "https://raw.githubusercontent.com/Lukas6623/ServerGuard/main/ssh_hardening.py";
+static const std::string HARDENING_TEMP_SCRIPT = "/opt/serverguard/ssh_hardening.py.update";
+static const std::string HARDENING_BACKUP_DIR = "/opt/serverguard/backups/ssh-hardening";
+static const std::string HARDENING_BACKUP_SCRIPT = "/opt/serverguard/backups/ssh-hardening/ssh_hardening.py";
+static const std::string HARDENING_CONFIG_BACKUP = "/opt/serverguard/backups/ssh-hardening/99-serverguard-hardening.conf";
 
-static const std::string SERVERGUARD_DIR =
-"/opt/serverguard";
+static const std::string LINE = "============================================\n";
 
-static const std::string HARDENING_SCRIPT =
-"/opt/serverguard/ssh_hardening.py";
+// ---------------------------------------------------------------- helpers
 
-static const std::string SSH_CONFIG =
-"/etc/ssh/sshd_config";
-
-static const std::string BACKUP_DIR =
-"/opt/serverguard/backups";
-
-
-static const std::string HARDENING_CONFIG =
-"/etc/ssh/sshd_config.d/99-serverguard-hardening.conf";
-
-
-static const std::string HARDENING_UPDATE_URL =
-"https://raw.githubusercontent.com/"
-"Lukas6623/ServerGuard/main/ssh_hardening.py";
-
-static const std::string HARDENING_TEMP_SCRIPT =
-"/opt/serverguard/ssh_hardening.py.update";
-
-static const std::string HARDENING_BACKUP_DIR =
-"/opt/serverguard/backups/ssh-hardening";
-
-static const std::string HARDENING_BACKUP_SCRIPT =
-"/opt/serverguard/backups/ssh-hardening/ssh_hardening.py";
-
-
-static const std::string HARDENING_CONFIG_BACKUP =
-"/opt/serverguard/backups/ssh-hardening/99-serverguard-hardening.conf";
-
-
-static std::string shellQuote(
-    const std::string& value
-)
+static std::string shellQuote(const std::string& value)
 {
     std::string result = "'";
-
     for (char c : value)
     {
-        if (c == '\'')
-        {
-            result += "'\\''";
-        }
-        else
-        {
-            result += c;
-        }
+        if (c == '\'') result += "'\\''";
+        else result += c;
     }
-
-    result += "'";
-
-    return result;
+    return result + "'";
 }
 
+static void banner(const std::string& title)
+{
+    std::cout << "\n" << LINE << "  " << title << "\n" << LINE << "\n";
+}
 
-SSHHardening::SSHHardening(
-    LIBSSH2_SESSION* sshSession,
-    const std::string& password,
-    bool isKeyAuthentication
-)
+static void printIfNotEmpty(const std::string& text)
+{
+    if (!text.empty()) std::cout << text << "\n";
+}
+
+static std::string chmodChown(const std::string& path)
+{
+    return "chown root:root " + shellQuote(path) + " && chmod 755 " + shellQuote(path);
+}
+
+static std::string sshdValue(const std::string& output, const std::string& name)
+{
+    std::istringstream stream(output);
+    std::string line;
+
+    while (std::getline(stream, line))
+    {
+        std::istringstream lineStream(line);
+        std::string key, value;
+        lineStream >> key >> value;
+
+        std::transform(key.begin(), key.end(), key.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+
+        if (key == name) return value;
+    }
+
+    return "unknown";
+}
+
+static std::string jsonEscape(const std::string& text)
+{
+    std::string out;
+    for (char c : text)
+    {
+        switch (c)
+        {
+        case '\\': out += "\\\\"; break;
+        case '"':  out += "\\\""; break;
+        case '\n': out += "\\n";  break;
+        case '\r': out += "\\r";  break;
+        case '\t': out += "\\t";  break;
+        default:   out += c;      break;
+        }
+    }
+    return out;
+}
+
+static std::string sessionError(LIBSSH2_SESSION* session, int& code)
+{
+    char* message = nullptr;
+    int length = 0;
+    code = libssh2_session_last_error(session, &message, &length, 0);
+    return (message && length > 0) ? std::string(message, length) : std::string();
+}
+
+static void readChannel(LIBSSH2_CHANNEL* channel, std::string& output)
+{
+    char buffer[4096];
+
+    while (true)
+    {
+        auto rc = libssh2_channel_read(channel, buffer, sizeof(buffer));
+
+        if (rc > 0) output.append(buffer, static_cast<size_t>(rc));
+        else if (rc == LIBSSH2_ERROR_EAGAIN || (rc == 0 && !libssh2_channel_eof(channel))) continue;
+        else break;
+    }
+}
+
+// ------------------------------------------------------------ constructor
+
+SSHHardening::SSHHardening(LIBSSH2_SESSION* sshSession, const std::string& password, bool isKeyAuthentication)
 {
     session = sshSession;
-
     sudoPassword = password;
-
     keyAuthentication = isKeyAuthentication;
-
     sudoRequired = false;
-
     sudoAuthenticated = false;
-
     hardeningEnabled = false;
 }
 
+// ------------------------------------------------------- remote execution
 
-bool SSHHardening::executeRemote(
-    const std::string& command,
-    std::string& output,
-    int& exitCode,
-    bool useSudo
-)
+bool SSHHardening::executeRemote(const std::string& command, std::string& output, int& exitCode, bool useSudo)
 {
     output.clear();
-
     exitCode = -1;
-
 
     if (!session)
     {
         output = "SSH session is invalid.";
-
         return false;
     }
-
 
     std::string finalCommand = command;
 
-
     if (useSudo && sudoRequired)
     {
-        if (!sudoAuthenticated)
+        if (!sudoAuthenticated && !authenticateSudo())
         {
-            if (!authenticateSudo())
-            {
-                output = "Cannot authenticate sudo.";
-
-                return false;
-            }
+            output = "Cannot authenticate sudo.";
+            return false;
         }
-
-        finalCommand =
-            "sudo -n bash -c " +
-            shellQuote(command);
+        finalCommand = "sudo -n bash -c " + shellQuote(command);
     }
-
 
     LIBSSH2_CHANNEL* channel = nullptr;
 
-    while (true)
+    while (!(channel = libssh2_channel_open_session(session)))
     {
-        channel =
-            libssh2_channel_open_session(
-                session
-            );
+        int code = 0;
+        std::string message = sessionError(session, code);
 
-        if (channel)
-        {
-            break;
-        }
+        if (code == LIBSSH2_ERROR_EAGAIN) continue;
 
-
-        int lastError = 0;
-
-        char* errorMessage = nullptr;
-
-        int errorLength = 0;
-
-        lastError =
-            libssh2_session_last_error(
-                session,
-                &errorMessage,
-                &errorLength,
-                0
-            );
-
-
-        if (lastError == LIBSSH2_ERROR_EAGAIN)
-        {
-            continue;
-        }
-
-
-        output =
-            "Cannot open SSH channel.";
-
-        if (errorMessage && errorLength > 0)
-        {
-            output +=
-                "\nlibssh2 error: " +
-                std::string(
-                    errorMessage,
-                    errorLength
-                );
-        }
-
-        output +=
-            "\nlibssh2 error code: " +
-            std::to_string(lastError);
-
-
+        output = "Cannot open SSH channel.";
+        if (!message.empty()) output += "\nlibssh2 error: " + message;
+        output += "\nlibssh2 error code: " + std::to_string(code);
         return false;
     }
 
+    libssh2_channel_handle_extended_data2(channel, LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE);
 
-    libssh2_channel_handle_extended_data2(
-        channel,
-        LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE
-    );
+    int rc;
+    while ((rc = libssh2_channel_exec(channel, finalCommand.c_str())) == LIBSSH2_ERROR_EAGAIN) {}
 
-
-    while (true)
+    if (rc != 0)
     {
-        int rc =
-            libssh2_channel_exec(
-                channel,
-                finalCommand.c_str()
-            );
+        int code = 0;
+        std::string message = sessionError(session, code);
 
-
-        if (rc == 0)
-        {
-            break;
-        }
-
-
-        if (rc == LIBSSH2_ERROR_EAGAIN)
-        {
-            continue;
-        }
-
-
-        char* errorMessage = nullptr;
-
-        int errorLength = 0;
-
-        int lastError =
-            libssh2_session_last_error(
-                session,
-                &errorMessage,
-                &errorLength,
-                0
-            );
-
-
-        output =
-            "Cannot execute remote command.";
-
-        output +=
-            "\nlibssh2 channel_exec error code: " +
-            std::to_string(rc);
-
-        output +=
-            "\nlibssh2 session error code: " +
-            std::to_string(lastError);
-
-
-        if (errorMessage && errorLength > 0)
-        {
-            output +=
-                "\nlibssh2 error: " +
-                std::string(
-                    errorMessage,
-                    errorLength
-                );
-        }
-
-
-        output +=
-            "\nCommand: " +
-            finalCommand;
-
+        output = "Cannot execute remote command.";
+        output += "\nlibssh2 channel_exec error code: " + std::to_string(rc);
+        output += "\nlibssh2 session error code: " + std::to_string(code);
+        if (!message.empty()) output += "\nlibssh2 error: " + message;
+        output += "\nCommand: " + finalCommand;
 
         libssh2_channel_free(channel);
-
         return false;
     }
 
-
-    char buffer[4096];
-
-
-    while (true)
-    {
-        int rc =
-            static_cast<int>(
-                libssh2_channel_read(
-                    channel,
-                    buffer,
-                    sizeof(buffer) - 1
-                )
-                );
-
-
-        if (rc > 0)
-        {
-            buffer[rc] = '\0';
-
-            output += buffer;
-
-            continue;
-        }
-
-
-        if (rc == 0)
-        {
-            if (libssh2_channel_eof(channel))
-            {
-                break;
-            }
-
-            continue;
-        }
-
-
-        if (rc == LIBSSH2_ERROR_EAGAIN)
-        {
-            continue;
-        }
-
-
-        break;
-    }
-
+    readChannel(channel, output);
 
     libssh2_channel_send_eof(channel);
-
     libssh2_channel_wait_eof(channel);
-
     libssh2_channel_wait_closed(channel);
 
-
-    exitCode =
-        libssh2_channel_get_exit_status(
-            channel
-        );
-
-
+    exitCode = libssh2_channel_get_exit_status(channel);
     libssh2_channel_free(channel);
-
 
     return exitCode == 0;
 }
 
-
 bool SSHHardening::authenticateSudo()
 {
-    if (!session)
-    {
-        return false;
-    }
-
+    if (!session) return false;
 
     if (!sudoRequired)
     {
         sudoAuthenticated = true;
-
         return true;
     }
-
 
     if (sudoPassword.empty())
     {
-        std::cout
-            << "Sudo password is empty.\n";
-
+        std::cout << "Sudo password is empty.\n";
         return false;
     }
 
+    std::cout << "Authenticating sudo...\n";
 
-    std::cout
-        << "Authenticating sudo...\n";
-
-
-    LIBSSH2_CHANNEL* channel =
-        libssh2_channel_open_session(
-            session
-        );
-
+    LIBSSH2_CHANNEL* channel = libssh2_channel_open_session(session);
 
     if (!channel)
     {
-        std::cout
-            << "Cannot open SSH channel for sudo.\n";
-
+        std::cout << "Cannot open SSH channel for sudo.\n";
         return false;
     }
 
+    libssh2_channel_request_pty(channel, "xterm");
+    libssh2_channel_handle_extended_data2(channel, LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE);
 
-    libssh2_channel_request_pty(
-        channel,
-        "xterm"
-    );
-
-
-    libssh2_channel_handle_extended_data2(
-        channel,
-        LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE
-    );
-
-
-    const char* command =
-        "sudo -S -p '' -v";
-
-
-    if (libssh2_channel_exec(
-        channel,
-        command
-    ) != 0)
+    if (libssh2_channel_exec(channel, "sudo -S -p '' -v") != 0)
     {
-        std::cout
-            << "Cannot execute sudo.\n";
-
+        std::cout << "Cannot execute sudo.\n";
         libssh2_channel_free(channel);
-
         return false;
     }
 
-
-    std::string password =
-        sudoPassword + "\n";
-
-
+    const std::string password = sudoPassword + "\n";
     size_t totalWritten = 0;
-
 
     while (totalWritten < password.size())
     {
-        int written =
-            static_cast<int>(
-                libssh2_channel_write(
-                    channel,
-                    password.c_str() + totalWritten,
-                    password.size() - totalWritten
-                )
-                );
+        auto written = libssh2_channel_write(channel, password.c_str() + totalWritten, password.size() - totalWritten);
 
-
-        if (written < 0)
+        if (written < 0 && written != LIBSSH2_ERROR_EAGAIN)
         {
-            std::cout
-                << "Cannot send sudo password.\n";
-
+            std::cout << "Cannot send sudo password.\n";
             libssh2_channel_free(channel);
-
             return false;
         }
 
-
-        if (written == 0)
-        {
-            continue;
-        }
-
-
-        totalWritten +=
-            static_cast<size_t>(
-                written
-                );
+        if (written > 0) totalWritten += static_cast<size_t>(written);
     }
-
 
     libssh2_channel_send_eof(channel);
 
-
-    char buffer[4096];
-
     std::string output;
-
-
-    while (true)
-    {
-        int rc =
-            static_cast<int>(
-                libssh2_channel_read(
-                    channel,
-                    buffer,
-                    sizeof(buffer) - 1
-                )
-                );
-
-
-        if (rc > 0)
-        {
-            buffer[rc] = '\0';
-
-            output += buffer;
-
-            continue;
-        }
-
-
-        if (rc == 0)
-        {
-            if (libssh2_channel_eof(channel))
-            {
-                break;
-            }
-
-            continue;
-        }
-
-
-        if (rc == LIBSSH2_ERROR_EAGAIN)
-        {
-            continue;
-        }
-
-
-        break;
-    }
-
+    readChannel(channel, output);
 
     libssh2_channel_wait_eof(channel);
-
     libssh2_channel_wait_closed(channel);
 
-
-    int exitCode =
-        libssh2_channel_get_exit_status(
-            channel
-        );
-
-
+    int exitCode = libssh2_channel_get_exit_status(channel);
     libssh2_channel_free(channel);
 
+    sudoAuthenticated = (exitCode == 0);
 
-    if (exitCode == 0)
+    if (sudoAuthenticated)
     {
-        sudoAuthenticated = true;
-
-        std::cout
-            << "Sudo authentication successful.\n";
-
+        std::cout << "Sudo authentication successful.\n";
         return true;
     }
 
-
-    sudoAuthenticated = false;
-
-
-    std::cout
-        << "Sudo authentication failed.\n";
-
-
-    if (!output.empty())
-    {
-        std::cout
-            << output
-            << "\n";
-    }
-
-
+    std::cout << "Sudo authentication failed.\n";
+    printIfNotEmpty(output);
     return false;
 }
 
+// ------------------------------------------------------------- pre-checks
 
-bool SSHHardening::commandExists(
-    const std::string& command
-)
+bool SSHHardening::commandExists(const std::string& command)
 {
     std::string output;
-
     int exitCode = -1;
-
-
-    std::string remoteCommand =
-        "command -v " +
-        shellQuote(command) +
-        " >/dev/null 2>&1";
-
-
-    executeRemote(
-        remoteCommand,
-        output,
-        exitCode,
-        false
-    );
-
-
+    executeRemote("command -v " + shellQuote(command) + " >/dev/null 2>&1", output, exitCode, false);
     return exitCode == 0;
 }
-
 
 bool SSHHardening::checkRootOrSudo()
 {
     std::string output;
-
     int exitCode = -1;
 
-
-    if (!executeRemote(
-        "id -u",
-        output,
-        exitCode,
-        false
-    ))
+    if (!executeRemote("id -u", output, exitCode, false))
     {
-        std::cout
-            << "Cannot determine remote user.\n";
-
+        std::cout << "Cannot determine remote user.\n";
         return false;
     }
 
-
-    output.erase(
-        std::remove_if(
-            output.begin(),
-            output.end(),
-            [](unsigned char c)
-            {
-                return std::isspace(c);
-            }
-        ),
-        output.end()
-    );
-
+    output.erase(std::remove_if(output.begin(), output.end(),
+        [](unsigned char c) { return std::isspace(c); }), output.end());
 
     if (output == "0")
     {
         sudoRequired = false;
-
         sudoAuthenticated = true;
-
         return true;
     }
 
-
     if (!commandExists("sudo"))
     {
-        std::cout
-            << "sudo is not installed.\n";
-
+        std::cout << "sudo is not installed.\n";
         return false;
     }
-
 
     sudoRequired = true;
 
-
     if (!authenticateSudo())
     {
-        std::cout
-            << "Current user cannot use sudo.\n";
-
+        std::cout << "Current user cannot use sudo.\n";
         return false;
     }
 
-
     return true;
 }
-
 
 bool SSHHardening::checkScript()
 {
     std::string output;
-
     int exitCode = -1;
-
-
-    std::string command =
-        "test -f " +
-        shellQuote(HARDENING_SCRIPT);
-
-
-    executeRemote(
-        command,
-        output,
-        exitCode,
-        false
-    );
-
-
+    executeRemote("test -f " + shellQuote(HARDENING_SCRIPT), output, exitCode, false);
     return exitCode == 0;
 }
-
 
 bool SSHHardening::setPermissions()
 {
     std::string output;
-
     int exitCode = -1;
 
-
-    std::string command =
-        "chmod 755 " +
-        shellQuote(HARDENING_SCRIPT) +
-        " && "
-        "chown root:root " +
-        shellQuote(HARDENING_SCRIPT);
-
-
-    if (!executeRemote(
-        command,
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote(chmodChown(HARDENING_SCRIPT), output, exitCode, true))
     {
-        std::cout
-            << "Cannot configure script permissions.\n";
-
-
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
-
+        std::cout << "Cannot configure script permissions.\n";
+        printIfNotEmpty(output);
         return false;
     }
-
 
     return true;
 }
 
+// -------------------------------------------------------------- hardening
 
 bool SSHHardening::runHardening()
 {
-    std::cout
-        << "\n";
-
-    std::cout
-        << "============================================\n";
-
-    std::cout
-        << "          APPLYING SSH HARDENING\n";
-
-    std::cout
-        << "============================================\n\n";
-
+    banner("APPLYING SSH HARDENING");
 
     std::string output;
-
     int exitCode = -1;
 
+    const std::string authMethod = keyAuthentication ? "publickey" : "password";
+    std::cout << "Authentication: " << (keyAuthentication ? "SSH private key" : "password") << "\n";
 
-    std::string authMethod;
+    const std::string command = "python3 " + shellQuote(HARDENING_SCRIPT) + " apply --auth-method=" + authMethod;
 
-    if (keyAuthentication)
-    {
-        authMethod = "publickey";
+    std::cout << "Running SSH hardening pre-flight checks...\n";
 
-        std::cout
-            << "Authentication: SSH private key\n";
-    }
-    else
-    {
-        authMethod = "password";
-
-        std::cout
-            << "Authentication: password\n";
-    }
-
-
-    std::string command =
-        "python3 " +
-        shellQuote(HARDENING_SCRIPT) +
-        " apply --auth-method=" +
-        authMethod;
-
-
-    std::cout
-        << "Running SSH hardening pre-flight checks...\n";
-
-
-    bool result =
-        executeRemote(
-            command,
-            output,
-            exitCode,
-            true
-        );
-
-
-    if (!output.empty())
-    {
-        std::cout
-            << output
-            << "\n";
-    }
-
+    bool result = executeRemote(command, output, exitCode, true);
+    printIfNotEmpty(output);
 
     if (!result)
     {
-        std::cout
-            << "\nSSH hardening failed.\n";
-
-        std::cout
-            << "Python exit code: "
-            << exitCode
-            << "\n";
-
+        std::cout << "\nSSH hardening failed.\nPython exit code: " << exitCode << "\n";
         hardeningEnabled = false;
-
         return false;
     }
-
 
     if (!checkHardening())
     {
-        std::cout
-            << "\nSSH hardening was not verified.\n";
-
+        std::cout << "\nSSH hardening was not verified.\n";
         hardeningEnabled = false;
-
         return false;
     }
 
-
     hardeningEnabled = true;
-
-
-    std::cout
-        << "\nSSH hardening completed successfully.\n";
-
-
+    std::cout << "\nSSH hardening completed successfully.\n";
     return true;
 }
 
-
 bool SSHHardening::checkHardening()
 {
-    std::cout
-        << "\n";
-
-    std::cout
-        << "============================================\n";
-
-    std::cout
-        << "          SSH HARDENING STATUS\n";
-
-    std::cout
-        << "============================================\n\n";
-
+    banner("SSH HARDENING STATUS");
 
     std::string output;
-
     int exitCode = -1;
 
-
-    std::string command =
-        "sshd -T 2>/dev/null";
-
-
-    if (!executeRemote(
-        command,
-        output,
-        exitCode,
-        sudoRequired
-    ))
+    if (!executeRemote("sshd -T 2>/dev/null", output, exitCode, sudoRequired))
     {
-        std::cout
-            << "Cannot read effective SSH configuration.\n";
-
+        std::cout << "Cannot read effective SSH configuration.\n";
         hardeningEnabled = false;
-
         return false;
     }
 
+    const std::vector<std::pair<std::string, std::string>> shown = {
+        { "PermitRootLogin", "permitrootlogin" },
+        { "PasswordAuthentication", "passwordauthentication" },
+        { "PubkeyAuthentication", "pubkeyauthentication" },
+        { "PermitEmptyPasswords", "permitemptypasswords" },
+        { "MaxAuthTries", "maxauthtries" },
+        { "LoginGraceTime", "logingracetime" },
+        { "X11Forwarding", "x11forwarding" },
+        { "AllowTcpForwarding", "allowtcpforwarding" },
+        { "AllowAgentForwarding", "allowagentforwarding" },
+        { "Compression", "compression" } };
 
-    auto getValue =
-        [&](const std::string& name)
-        {
-            std::istringstream stream(output);
+    for (const auto& [label, key] : shown)
+        std::cout << label << ": " << sshdValue(output, key) << "\n";
 
-            std::string line;
-
-
-            while (std::getline(stream, line))
-            {
-                std::istringstream lineStream(line);
-
-                std::string key;
-                std::string value;
-
-
-                lineStream
-                    >> key
-                    >> value;
-
-
-                std::transform(
-                    key.begin(),
-                    key.end(),
-                    key.begin(),
-                    [](unsigned char c)
-                    {
-                        return static_cast<char>(
-                            std::tolower(c)
-                            );
-                    }
-                );
-
-
-                if (key == name)
-                {
-                    return value;
-                }
-            }
-
-
-            return std::string("unknown");
-        };
-
-
-    std::string permitRootLogin =
-        getValue("permitrootlogin");
-
-    std::string passwordAuthentication =
-        getValue("passwordauthentication");
-
-    std::string pubkeyAuthentication =
-        getValue("pubkeyauthentication");
-
-    std::string permitEmptyPasswords =
-        getValue("permitemptypasswords");
-
-    std::string maxAuthTries =
-        getValue("maxauthtries");
-
-    std::string loginGraceTime =
-        getValue("logingracetime");
-
-    std::string x11Forwarding =
-        getValue("x11forwarding");
-
-    std::string allowTcpForwarding =
-        getValue("allowtcpforwarding");
-
-    std::string allowAgentForwarding =
-        getValue("allowagentforwarding");
-
-    std::string compression =
-        getValue("compression");
-
-
-    std::cout
-        << "PermitRootLogin: "
-        << permitRootLogin
-        << "\n";
-
-    std::cout
-        << "PasswordAuthentication: "
-        << passwordAuthentication
-        << "\n";
-
-    std::cout
-        << "PubkeyAuthentication: "
-        << pubkeyAuthentication
-        << "\n";
-
-    std::cout
-        << "PermitEmptyPasswords: "
-        << permitEmptyPasswords
-        << "\n";
-
-    std::cout
-        << "MaxAuthTries: "
-        << maxAuthTries
-        << "\n";
-
-    std::cout
-        << "LoginGraceTime: "
-        << loginGraceTime
-        << "\n";
-
-    std::cout
-        << "X11Forwarding: "
-        << x11Forwarding
-        << "\n";
-
-    std::cout
-        << "AllowTcpForwarding: "
-        << allowTcpForwarding
-        << "\n";
-
-    std::cout
-        << "AllowAgentForwarding: "
-        << allowAgentForwarding
-        << "\n";
-
-    std::cout
-        << "Compression: "
-        << compression
-        << "\n";
-
+    // name, sshd key, expected value
+    const std::vector<std::vector<std::string>> checks = {
+        { "PermitEmptyPasswords", "permitemptypasswords", "no" },
+        { "MaxAuthTries", "maxauthtries", "3" },
+        { "LoginGraceTime", "logingracetime", "30" },
+        { "X11Forwarding", "x11forwarding", "no" },
+        { "AllowAgentForwarding", "allowagentforwarding", "no" },
+        { "Compression", "compression", "no" } };
 
     bool allGood = true;
+    std::cout << "\nVerification:\n";
 
+    for (const auto& c : checks)
+    {
+        const std::string actual = sshdValue(output, c[1]);
 
-    auto checkValue =
-        [&](const std::string& name,
-            const std::string& actual,
-            const std::string& expected)
+        if (actual == c[2])
         {
-            bool valid = false;
-
-
-            if (name == "PermitRootLogin")
-            {
-                valid =
-                    actual == "prohibit-password" ||
-                    actual == "without-password";
-            }
-            else
-            {
-                valid =
-                    actual == expected;
-            }
-
-
-            if (valid)
-            {
-                std::cout
-                    << "[OK] "
-                    << name
-                    << " = "
-                    << actual
-                    << "\n";
-
-                return true;
-            }
-
-
-            std::cout
-                << "[FAIL] "
-                << name
-                << " = "
-                << actual
-                << " (expected "
-                << expected
-                << ")\n";
-
-
-            return false;
-        };
-
-
-    std::cout
-        << "\nVerification:\n";
-
-
-
-
-
-    if (!checkValue(
-        "PermitEmptyPasswords",
-        permitEmptyPasswords,
-        "no"
-    ))
-    {
-        allGood = false;
+            std::cout << "[OK] " << c[0] << " = " << actual << "\n";
+        }
+        else
+        {
+            std::cout << "[FAIL] " << c[0] << " = " << actual << " (expected " << c[2] << ")\n";
+            allGood = false;
+        }
     }
-
-
-    if (!checkValue(
-        "MaxAuthTries",
-        maxAuthTries,
-        "3"
-    ))
-    {
-        allGood = false;
-    }
-
-
-    if (!checkValue(
-        "LoginGraceTime",
-        loginGraceTime,
-        "30"
-    ))
-    {
-        allGood = false;
-    }
-
-
-    if (!checkValue(
-        "X11Forwarding",
-        x11Forwarding,
-        "no"
-    ))
-    {
-        allGood = false;
-    }
-
-
-
-    if (!checkValue(
-        "AllowAgentForwarding",
-        allowAgentForwarding,
-        "no"
-    ))
-    {
-        allGood = false;
-    }
-
-
-    if (!checkValue(
-        "Compression",
-        compression,
-        "no"
-    ))
-    {
-        allGood = false;
-    }
-
 
     if (checkSSHService())
     {
-        std::cout
-            << "\nSSH service: ACTIVE\n";
+        std::cout << "\nSSH service: ACTIVE\n";
     }
     else
     {
-        std::cout
-            << "\nSSH service: NOT ACTIVE\n";
-
+        std::cout << "\nSSH service: NOT ACTIVE\n";
         allGood = false;
     }
 
+    std::cout << "\n" << LINE << "ServerGuard hardening: " << (allGood ? "ENABLED" : "NOT ENABLED") << "\n" << LINE;
 
-    if (allGood)
-    {
-        std::cout
-            << "\n============================================\n";
-
-        std::cout
-            << "ServerGuard hardening: ENABLED\n";
-
-        std::cout
-            << "============================================\n";
-
-        hardeningEnabled = true;
-    }
-    else
-    {
-        std::cout
-            << "\n============================================\n";
-
-        std::cout
-            << "ServerGuard hardening: NOT ENABLED\n";
-
-        std::cout
-            << "============================================\n";
-
-        hardeningEnabled = false;
-    }
-
-
+    hardeningEnabled = allGood;
     return allGood;
 }
-
 
 bool SSHHardening::checkSSHService()
 {
     std::string output;
-
     int exitCode = -1;
 
+    executeRemote("systemctl is-active --quiet ssh", output, exitCode, false);
+    if (exitCode == 0) return true;
 
-    executeRemote(
-        "systemctl is-active --quiet ssh",
-        output,
-        exitCode,
-        false
-    );
-
-
-    if (exitCode == 0)
-    {
-        return true;
-    }
-
-
-    executeRemote(
-        "systemctl is-active --quiet sshd",
-        output,
-        exitCode,
-        false
-    );
-
-
+    executeRemote("systemctl is-active --quiet sshd", output, exitCode, false);
     return exitCode == 0;
 }
-
 
 bool SSHHardening::isSSHConfigValid()
 {
     std::string output;
-
     int exitCode = -1;
 
-
-    if (!executeRemote(
-        "sshd -t",
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote("sshd -t", output, exitCode, true))
     {
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
+        printIfNotEmpty(output);
         return false;
     }
-
 
     return true;
 }
 
+// ---------------------------------------------------------------- backups
 
 bool SSHHardening::showBackups()
 {
     std::string output;
-
     int exitCode = -1;
 
-
-    std::string command =
-        "ls -lah " +
-        shellQuote(BACKUP_DIR) +
-        " 2>/dev/null";
-
-
-    if (!executeRemote(
-        command,
-        output,
-        exitCode,
-        false
-    ))
+    if (!executeRemote("ls -lah " + shellQuote(BACKUP_DIR) + " 2>/dev/null", output, exitCode, sudoRequired))
     {
-        std::cout
-            << "Cannot read backup directory.\n";
-
+        std::cout << "Cannot read backup directory.\n";
         return false;
     }
 
+    banner("SSH BACKUPS");
 
-    std::cout
-        << "\n";
-
-    std::cout
-        << "============================================\n";
-
-    std::cout
-        << "             SSH BACKUPS\n";
-
-    std::cout
-        << "============================================\n\n";
-
-
-    if (output.empty())
-    {
-        std::cout
-            << "No backups found.\n";
-    }
-    else
-    {
-        std::cout
-            << output
-            << "\n";
-    }
-
+    if (output.empty()) std::cout << "No backups found.\n";
+    else std::cout << output << "\n";
 
     return true;
 }
@@ -1257,872 +500,346 @@ bool SSHHardening::showBackups()
 bool SSHHardening::restoreConfiguration()
 {
     std::cout << "\n";
-
     showBackups();
 
     std::cout << "\nEnter backup filename (empty to cancel): ";
 
     std::string filename;
-
     std::getline(std::cin >> std::ws, filename);
 
-    // убираем пробелы по краям
     while (!filename.empty() && std::isspace(static_cast<unsigned char>(filename.back())))
         filename.pop_back();
 
-    if (filename.empty())
-    {
-        return false;
-    }
+    if (filename.empty()) return false;
 
-    if (
-        filename.find('/') != std::string::npos ||
+    if (filename.find('/') != std::string::npos ||
         filename.find('\\') != std::string::npos ||
-        filename.find("..") != std::string::npos
-        )
+        filename.find("..") != std::string::npos)
     {
         std::cout << "Invalid backup filename.\n";
-
         return false;
     }
 
     const std::string prefix = "pre-hardening_";
     const std::string suffix = ".tar.gz";
 
-    if (
-        filename.size() <= prefix.size() + suffix.size() ||
+    if (filename.size() <= prefix.size() + suffix.size() ||
         filename.compare(0, prefix.size(), prefix) != 0 ||
-        filename.compare(filename.size() - suffix.size(), suffix.size(), suffix) != 0
-        )
+        filename.compare(filename.size() - suffix.size(), suffix.size(), suffix) != 0)
     {
-        std::cout
-            << "Unsupported backup type. Expected: "
-            << "pre-hardening_*.tar.gz\n";
-
+        std::cout << "Unsupported backup type. Expected: pre-hardening_*.tar.gz\n";
         return false;
     }
 
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
+    if (!checkRootOrSudo()) return false;
 
     if (!checkScript())
     {
-        std::cout
-            << "SSH Hardening script was not found:\n"
-            << HARDENING_SCRIPT
-            << "\n";
-
+        std::cout << "SSH Hardening script was not found:\n" << HARDENING_SCRIPT << "\n";
         return false;
     }
 
-    std::string backupPath =
-        BACKUP_DIR +
-        "/" +
-        filename;
-
+    const std::string backupPath = BACKUP_DIR + "/" + filename;
     std::string output;
-
     int exitCode = -1;
 
-    // /opt/serverguard/backups доступна только root, поэтому через sudo
-    if (!executeRemote(
-        "test -f " + shellQuote(backupPath) +
-        " && test -f " + shellQuote(backupPath + ".json"),
-        output,
-        exitCode,
-        true
-    ))
+    // The backups directory is root-only, so the check goes through sudo.
+    if (!executeRemote("test -f " + shellQuote(backupPath) + " && test -f " + shellQuote(backupPath + ".json"),
+        output, exitCode, true))
     {
-        std::cout
-            << "Backup file (or its .json manifest) not found.\n";
-
+        std::cout << "Backup file (or its .json manifest) not found.\n";
         return false;
     }
 
     std::cout << "\nRestoring configuration...\n";
 
-    std::string command =
-        "python3 " +
-        shellQuote(HARDENING_SCRIPT) +
-        " restore " +
-        shellQuote(filename);
+    bool ok = executeRemote("python3 " + shellQuote(HARDENING_SCRIPT) + " restore " + shellQuote(filename),
+        output, exitCode, true);
 
-    output.clear();
-
-    exitCode = -1;
-
-    bool ok = executeRemote(
-        command,
-        output,
-        exitCode,
-        true
-    );
-
-    if (!output.empty())
-    {
-        std::cout
-            << "\n"
-            << output
-            << "\n";
-    }
+    if (!output.empty()) std::cout << "\n" << output << "\n";
 
     if (!ok)
     {
-        std::cout
-            << "\nCannot restore configuration.\n"
-            << "Python exit code: "
-            << exitCode
-            << "\n";
-
+        std::cout << "\nCannot restore configuration.\nPython exit code: " << exitCode << "\n";
         return false;
     }
 
-    std::cout
-        << "\nSSH configuration restored successfully.\n";
-
+    std::cout << "\nSSH configuration restored successfully.\n";
     checkHardening();
-
     return true;
 }
 
+// ----------------------------------------------------------------- update
 
 bool SSHHardening::downloadUpdate()
 {
-    std::cout
-        << "\n[1/6] Downloading new SSH Hardening script...\n";
-
+    std::cout << "\n[1/6] Downloading new SSH Hardening script...\n";
 
     std::string output;
-
     int exitCode = -1;
 
+    const std::string cleanup = "rm -f " + shellQuote(HARDENING_TEMP_SCRIPT);
+    executeRemote(cleanup, output, exitCode, true);
 
-    executeRemote(
-        "rm -f " +
-        shellQuote(HARDENING_TEMP_SCRIPT),
-        output,
-        exitCode,
-        true
-    );
+    const std::string command =
+        "curl -fL --connect-timeout 15 --max-time 120 --retry 2 -o " +
+        shellQuote(HARDENING_TEMP_SCRIPT) + " " + shellQuote(HARDENING_UPDATE_URL);
 
-
-    std::string command =
-        "curl -fL "
-        "--connect-timeout 15 "
-        "--max-time 120 "
-        "--retry 2 "
-        "-o " +
-        shellQuote(HARDENING_TEMP_SCRIPT) +
-        " " +
-        shellQuote(HARDENING_UPDATE_URL);
-
-
-    output.clear();
-
-    exitCode = -1;
-
-
-    if (!executeRemote(
-        command,
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote(command, output, exitCode, true))
     {
-        std::cout
-            << "Download failed.\n";
-
-
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(HARDENING_TEMP_SCRIPT),
-            output,
-            exitCode,
-            true
-        );
-
-
+        std::cout << "Download failed.\n";
+        printIfNotEmpty(output);
+        executeRemote(cleanup, output, exitCode, true);
         return false;
     }
 
-
-    output.clear();
-
-    exitCode = -1;
-
-
-    if (!executeRemote(
-        "test -s " +
-        shellQuote(HARDENING_TEMP_SCRIPT),
-        output,
-        exitCode,
-        false
-    ))
+    if (!executeRemote("test -s " + shellQuote(HARDENING_TEMP_SCRIPT), output, exitCode, false))
     {
-        std::cout
-            << "Downloaded file is empty.\n";
-
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(HARDENING_TEMP_SCRIPT),
-            output,
-            exitCode,
-            true
-        );
-
-
+        std::cout << "Downloaded file is empty.\n";
+        executeRemote(cleanup, output, exitCode, true);
         return false;
     }
 
-
-    std::cout
-        << "Download completed.\n";
-
-
+    std::cout << "Download completed.\n";
     return true;
 }
 
-
 bool SSHHardening::verifyUpdate()
 {
-    std::cout
-        << "[2/6] Checking Python syntax...\n";
+    std::cout << "[2/6] Checking Python syntax...\n";
 
-
-    std::string pythonCommand =
+    const std::string pythonCommand =
         "import ast,sys;"
         "p=open(sys.argv[1],encoding='utf-8').read();"
         "ast.parse(p,filename=sys.argv[1]);"
         "print('Python syntax: OK')";
 
-
-    std::string command =
-        "python3 -c " +
-        shellQuote(pythonCommand) +
-        " " +
-        shellQuote(HARDENING_TEMP_SCRIPT);
-
-
     std::string output;
-
     int exitCode = -1;
 
-
-    if (!executeRemote(
-        command,
-        output,
-        exitCode,
-        false
-    ))
+    if (!executeRemote("python3 -c " + shellQuote(pythonCommand) + " " + shellQuote(HARDENING_TEMP_SCRIPT),
+        output, exitCode, false))
     {
-        std::cout
-            << "Python syntax verification FAILED.\n";
-
-
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
-
+        std::cout << "Python syntax verification FAILED.\n";
+        printIfNotEmpty(output);
         return false;
     }
 
+    std::cout << output;
 
-    std::cout
-        << output;
-
-
-    output.clear();
-
-    exitCode = -1;
-
-
-    if (!executeRemote(
-        "test -s " +
-        shellQuote(HARDENING_TEMP_SCRIPT),
-        output,
-        exitCode,
-        false
-    ))
+    if (!executeRemote("test -s " + shellQuote(HARDENING_TEMP_SCRIPT), output, exitCode, false))
     {
-        std::cout
-            << "Downloaded script is invalid.\n";
-
+        std::cout << "Downloaded script is invalid.\n";
         return false;
     }
 
-
-    std::cout
-        << "Checking current SSH configuration...\n";
-
+    std::cout << "Checking current SSH configuration...\n";
 
     if (!isSSHConfigValid())
     {
-        std::cout
-            << "Current SSH configuration is invalid.\n"
-            << "Update cancelled.\n";
-
+        std::cout << "Current SSH configuration is invalid.\nUpdate cancelled.\n";
         return false;
     }
 
-
-    std::cout
-        << "Update verification completed.\n";
-
-
+    std::cout << "Update verification completed.\n";
     return true;
 }
-
 
 bool SSHHardening::backupCurrentScript()
 {
-    std::cout
-        << "[3/6] Creating backup of current SSH Hardening script...\n";
-
+    std::cout << "[3/6] Creating backup of current SSH Hardening script...\n";
 
     std::string output;
-
     int exitCode = -1;
 
-
-    if (!executeRemote(
-        "test -f " +
-        shellQuote(HARDENING_SCRIPT),
-        output,
-        exitCode,
-        false
-    ))
+    if (!executeRemote("test -f " + shellQuote(HARDENING_SCRIPT), output, exitCode, false))
     {
-        std::cout
-            << "Current SSH Hardening script not found.\n";
-
+        std::cout << "Current SSH Hardening script not found.\n";
         return false;
     }
 
-
-    output.clear();
-
-    exitCode = -1;
-
-
-    if (!executeRemote(
-        "mkdir -p " +
-        shellQuote(HARDENING_BACKUP_DIR),
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote("mkdir -p " + shellQuote(HARDENING_BACKUP_DIR), output, exitCode, true))
     {
-        std::cout
-            << "Cannot create backup directory.\n";
-
-
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
-
+        std::cout << "Cannot create backup directory.\n";
+        printIfNotEmpty(output);
         return false;
     }
 
-
-    std::string command =
-        "cp -p " +
-        shellQuote(HARDENING_SCRIPT) +
-        " " +
-        shellQuote(HARDENING_BACKUP_SCRIPT);
-
-
-    output.clear();
-
-    exitCode = -1;
-
-
-    if (!executeRemote(
-        command,
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote("cp -p " + shellQuote(HARDENING_SCRIPT) + " " + shellQuote(HARDENING_BACKUP_SCRIPT),
+        output, exitCode, true))
     {
-        std::cout
-            << "Cannot create backup.\n";
-
-
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
-
+        std::cout << "Cannot create backup.\n";
+        printIfNotEmpty(output);
         return false;
     }
 
+    executeRemote(chmodChown(HARDENING_BACKUP_SCRIPT), output, exitCode, true);
 
-    command =
-        "chown root:root " +
-        shellQuote(HARDENING_BACKUP_SCRIPT) +
-        " && chmod 755 " +
-        shellQuote(HARDENING_BACKUP_SCRIPT);
-
-
-    executeRemote(
-        command,
-        output,
-        exitCode,
-        true
-    );
-
-
-    std::cout
-        << "Backup created:\n"
-        << HARDENING_BACKUP_SCRIPT
-        << "\n";
-
-
+    std::cout << "Backup created:\n" << HARDENING_BACKUP_SCRIPT << "\n";
     return true;
 }
-
 
 bool SSHHardening::installUpdatedScript()
 {
-    std::cout
-        << "[4/6] Installing new SSH Hardening script...\n";
-
+    std::cout << "[4/6] Installing new SSH Hardening script...\n";
 
     std::string output;
-
     int exitCode = -1;
 
-
-    std::string command =
-        "mv -f " +
-        shellQuote(HARDENING_TEMP_SCRIPT) +
-        " " +
-        shellQuote(HARDENING_SCRIPT);
-
-
-    if (!executeRemote(
-        command,
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote("mv -f " + shellQuote(HARDENING_TEMP_SCRIPT) + " " + shellQuote(HARDENING_SCRIPT),
+        output, exitCode, true))
     {
-        std::cout
-            << "Cannot replace SSH Hardening script.\n";
-
-
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
-
+        std::cout << "Cannot replace SSH Hardening script.\n";
+        printIfNotEmpty(output);
         return false;
     }
 
-
-    command =
-        "chown root:root " +
-        shellQuote(HARDENING_SCRIPT) +
-        " && chmod 755 " +
-        shellQuote(HARDENING_SCRIPT);
-
-
-    output.clear();
-
-    exitCode = -1;
-
-
-    if (!executeRemote(
-        command,
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote(chmodChown(HARDENING_SCRIPT), output, exitCode, true))
     {
-        std::cout
-            << "Cannot configure updated script permissions.\n";
-
+        std::cout << "Cannot configure updated script permissions.\n";
         return false;
     }
-
 
     return true;
 }
-
 
 bool SSHHardening::rollbackUpdate()
 {
-    std::cout
-        << "\n============================================\n"
-        << "       ROLLING BACK SSH HARDENING\n"
-        << "============================================\n";
-
+    std::cout << "\n" << LINE << "       ROLLING BACK SSH HARDENING\n" << LINE;
 
     std::string output;
-
     int exitCode = -1;
 
-
-    if (!executeRemote(
-        "test -f " +
-        shellQuote(HARDENING_BACKUP_SCRIPT),
-        output,
-        exitCode,
-        false
-    ))
+    if (!executeRemote("test -f " + shellQuote(HARDENING_BACKUP_SCRIPT), output, exitCode, false))
     {
-        std::cout
-            << "Backup file not found.\n";
-
+        std::cout << "Backup file not found.\n";
         return false;
     }
 
-
-    std::string command =
-        "cp -p " +
-        shellQuote(HARDENING_BACKUP_SCRIPT) +
-        " " +
-        shellQuote(HARDENING_SCRIPT);
-
-
-    output.clear();
-
-    exitCode = -1;
-
-
-    if (!executeRemote(
-        command,
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote("cp -p " + shellQuote(HARDENING_BACKUP_SCRIPT) + " " + shellQuote(HARDENING_SCRIPT),
+        output, exitCode, true))
     {
-        std::cout
-            << "Cannot restore previous script.\n";
-
+        std::cout << "Cannot restore previous script.\n";
         return false;
     }
 
-
-    command =
-        "chown root:root " +
-        shellQuote(HARDENING_SCRIPT) +
-        " && chmod 755 " +
-        shellQuote(HARDENING_SCRIPT);
-
-
-    executeRemote(
-        command,
-        output,
-        exitCode,
-        true
-    );
-
-
-    executeRemote(
-        "rm -f " +
-        shellQuote(HARDENING_TEMP_SCRIPT),
-        output,
-        exitCode,
-        true
-    );
-
+    executeRemote(chmodChown(HARDENING_SCRIPT), output, exitCode, true);
+    executeRemote("rm -f " + shellQuote(HARDENING_TEMP_SCRIPT), output, exitCode, true);
 
     if (!isSSHConfigValid())
     {
-        std::cout
-            << "Previous script restored, "
-            << "but SSH configuration is still invalid.\n";
-
+        std::cout << "Previous script restored, but SSH configuration is still invalid.\n";
         return false;
     }
 
-
-    std::cout
-        << "\nRollback successful.\n"
-        << "Previous SSH Hardening script restored.\n";
-
-
+    std::cout << "\nRollback successful.\nPrevious SSH Hardening script restored.\n";
     return true;
 }
 
-
 bool SSHHardening::update()
 {
-    std::cout
-        << "\n============================================\n"
-        << "        UPDATE SSH HARDENING\n"
-        << "============================================\n\n";
+    banner("UPDATE SSH HARDENING");
 
+    std::string output;
+    int exitCode = -1;
 
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
+    const auto removeTemp = [&] { executeRemote("rm -f " + shellQuote(HARDENING_TEMP_SCRIPT), output, exitCode, true); };
 
+    if (!checkRootOrSudo()) return false;
 
     if (!checkScript())
     {
-        std::cout
-            << "SSH Hardening script is not installed:\n"
-            << HARDENING_SCRIPT
-            << "\n";
-
+        std::cout << "SSH Hardening script is not installed:\n" << HARDENING_SCRIPT << "\n";
         return false;
     }
-
 
     if (!commandExists("python3"))
     {
-        std::cout
-            << "python3 is not installed.\n";
-
+        std::cout << "python3 is not installed.\n";
         return false;
     }
 
-
     if (!commandExists("curl"))
     {
-        std::cout
-            << "curl is not installed.\n"
-            << "Installing curl...\n";
+        std::cout << "curl is not installed.\nInstalling curl...\n";
 
-
-        std::string output;
-
-        int exitCode = -1;
-
-
-        if (!executeRemote(
-            "apt-get update && "
-            "DEBIAN_FRONTEND=noninteractive "
-            "apt-get install -y curl",
-            output,
-            exitCode,
-            true
-        ))
+        if (!executeRemote("apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl",
+            output, exitCode, true))
         {
-            std::cout
-                << "Cannot install curl.\n";
-
-
-            if (!output.empty())
-            {
-                std::cout
-                    << output
-                    << "\n";
-            }
-
-
+            std::cout << "Cannot install curl.\n";
+            printIfNotEmpty(output);
             return false;
         }
     }
 
-
-    if (!downloadUpdate())
-    {
-        return false;
-    }
-
+    if (!downloadUpdate()) return false;
 
     if (!verifyUpdate())
     {
-        std::cout
-            << "\nUpdate cancelled.\n"
-            << "Current SSH Hardening script was not changed.\n";
-
-
-        std::string output;
-
-        int exitCode = -1;
-
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(HARDENING_TEMP_SCRIPT),
-            output,
-            exitCode,
-            true
-        );
-
-
+        std::cout << "\nUpdate cancelled.\nCurrent SSH Hardening script was not changed.\n";
+        removeTemp();
         return false;
     }
-
 
     if (!backupCurrentScript())
     {
-        std::string output;
-
-        int exitCode = -1;
-
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(HARDENING_TEMP_SCRIPT),
-            output,
-            exitCode,
-            true
-        );
-
-
+        removeTemp();
         return false;
     }
-
 
     if (!installUpdatedScript())
     {
-        std::cout
-            << "\nNew SSH Hardening script was not installed.\n";
-
-
-        std::string output;
-
-        int exitCode = -1;
-
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(HARDENING_TEMP_SCRIPT),
-            output,
-            exitCode,
-            true
-        );
-
-
+        std::cout << "\nNew SSH Hardening script was not installed.\n";
+        removeTemp();
         return false;
     }
 
+    std::cout << "[5/6] Verifying installed SSH Hardening script...\n";
 
-    std::cout
-        << "[5/6] Verifying installed SSH Hardening script...\n";
-
-
-    std::string output;
-
-    int exitCode = -1;
-
-
-    std::string pythonCommand =
+    const std::string pythonCommand =
         "import ast;"
-        "p=open('/opt/serverguard/ssh_hardening.py',"
-        "encoding='utf-8').read();"
+        "p=open('/opt/serverguard/ssh_hardening.py',encoding='utf-8').read();"
         "ast.parse(p,filename='ssh_hardening.py');"
         "print('Installed script: OK')";
 
-
-    std::string verifyCommand =
-        "python3 -c " +
-        shellQuote(pythonCommand);
-
-
-    if (!executeRemote(
-        verifyCommand,
-        output,
-        exitCode,
-        false
-    ))
+    if (!executeRemote("python3 -c " + shellQuote(pythonCommand), output, exitCode, false))
     {
-        std::cout
-            << "Installed script verification failed.\n";
-
-
+        std::cout << "Installed script verification failed.\n";
         rollbackUpdate();
-
         return false;
     }
 
-
-    std::cout
-        << output;
-
-
-    std::cout
-        << "[6/6] Final SSH configuration validation...\n";
-
+    std::cout << output;
+    std::cout << "[6/6] Final SSH configuration validation...\n";
 
     if (!isSSHConfigValid())
     {
-        std::cout
-            << "\nSSH configuration validation failed.\n"
-            << "Starting automatic rollback...\n";
-
+        std::cout << "\nSSH configuration validation failed.\nStarting automatic rollback...\n";
 
         if (!rollbackUpdate())
-        {
-            std::cout
-                << "WARNING: rollback also failed.\n"
-                << "Check SSH configuration manually.\n";
-        }
-
+            std::cout << "WARNING: rollback also failed.\nCheck SSH configuration manually.\n";
 
         return false;
     }
 
+    removeTemp();
 
-    executeRemote(
-        "rm -f " +
-        shellQuote(HARDENING_TEMP_SCRIPT),
-        output,
-        exitCode,
-        true
-    );
-
-
-    std::cout
-        << "\n============================================\n"
-        << "   SSH HARDENING UPDATE SUCCESSFUL\n"
-        << "============================================\n"
-        << "Source:\n"
-        << HARDENING_UPDATE_URL
-        << "\n\n"
-        << "Script:\n"
-        << HARDENING_SCRIPT
-        << "\n\n"
-        << "Backup:\n"
-        << HARDENING_BACKUP_SCRIPT
-        << "\n\n"
-        << "SSH configuration: VALID\n"
-        << "============================================\n";
-
+    std::cout << "\n" << LINE << "   SSH HARDENING UPDATE SUCCESSFUL\n" << LINE
+        << "Source:\n" << HARDENING_UPDATE_URL << "\n\n"
+        << "Script:\n" << HARDENING_SCRIPT << "\n\n"
+        << "Backup:\n" << HARDENING_BACKUP_SCRIPT << "\n\n"
+        << "SSH configuration: VALID\n" << LINE;
 
     return true;
 }
 
+// ------------------------------------------------------------------- menu
 
 void SSHHardening::menu()
 {
     while (true)
     {
-        std::cout
-            << "\n"
-            << "============================================\n"
-            << "             SSH HARDENING\n"
-            << "============================================\n"
+        std::cout << "\n" << LINE << "             SSH HARDENING\n" << LINE
             << "\n"
             << "1. Apply hardening\n"
             << "2. Check hardening status\n"
@@ -2131,699 +848,302 @@ void SSHHardening::menu()
             << "5. Restore backup\n"
             << "6. Install / update hardening script\n"
             << "0. Back\n"
-            << "\n"
-            << "Select: ";
+            << "\nSelect: ";
 
         std::string choice;
         std::getline(std::cin, choice);
 
-        if (choice == "0")
-        {
-            return;
-        }
+        if (choice == "0") return;
 
         if (choice == "1")
         {
-            if (!webApply())
-            {
-                std::cout
-                    << "\n"
-                    << "SSH hardening was not applied.\n"
-                    << "\n";
-            }
-
+            if (!webApply()) std::cout << "\nSSH hardening was not applied.\n\n";
             continue;
         }
 
         if (choice == "2")
         {
-            if (!checkRootOrSudo())
-            {
-                continue;
-            }
-
-            checkHardening();
-
+            if (checkRootOrSudo()) checkHardening();
             continue;
         }
 
         if (choice == "3")
         {
-            if (!checkRootOrSudo())
-            {
-                continue;
-            }
+            if (!checkRootOrSudo()) continue;
 
             if (!checkScript())
             {
-                std::cout
-                    << "\nSSH hardening script was not found:\n"
-                    << HARDENING_SCRIPT
-                    << "\n\n";
-
+                std::cout << "\nSSH hardening script was not found:\n" << HARDENING_SCRIPT << "\n\n";
                 continue;
             }
 
-            std::cout
-                << "\n"
-                << "Disabling SSH hardening...\n";
+            std::cout << "\nDisabling SSH hardening...\n";
 
             std::string output;
             int exitCode = -1;
 
-            std::string command =
-                "python3 " +
-                shellQuote(HARDENING_SCRIPT) +
-                " disable";
-
-            if (!executeRemote(
-                command,
-                output,
-                exitCode,
-                true))
+            if (!executeRemote("python3 " + shellQuote(HARDENING_SCRIPT) + " disable", output, exitCode, true))
             {
-                std::cout
-                    << "\n"
-                    << "Cannot execute remote command.\n";
-
+                std::cout << "\nCannot execute remote command.\n";
                 continue;
             }
 
-            if (!output.empty())
-            {
-                std::cout
-                    << "\n"
-                    << output
-                    << "\n";
-            }
+            if (!output.empty()) std::cout << "\n" << output << "\n";
 
             if (exitCode != 0)
             {
-                std::cout
-                    << "\n"
-                    << "SSH hardening disable failed.\n"
-                    << "Python exit code: "
-                    << exitCode
-                    << "\n";
-
+                std::cout << "\nSSH hardening disable failed.\nPython exit code: " << exitCode << "\n";
                 continue;
             }
 
             hardeningEnabled = false;
-
-            std::cout
-                << "\n"
-                << "SSH hardening disabled successfully.\n";
-
+            std::cout << "\nSSH hardening disabled successfully.\n";
             continue;
         }
 
         if (choice == "4")
         {
-            if (!checkRootOrSudo())
-            {
-                continue;
-            }
+            if (!checkRootOrSudo()) continue;
 
             std::string output;
             int exitCode = -1;
 
-            std::string command =
-                "sshd -T 2>/dev/null";
-
-            if (!executeRemote(
-                command,
-                output,
-                exitCode,
-                true))
+            if (!executeRemote("sshd -T 2>/dev/null", output, exitCode, true) || exitCode != 0)
             {
-                std::cout
-                    << "\n"
-                    << "Cannot read SSH configuration.\n";
-
+                std::cout << "\nCannot read SSH configuration.\n";
+                printIfNotEmpty(output);
                 continue;
             }
 
-            if (exitCode != 0)
-            {
-                std::cout
-                    << "\n"
-                    << "Failed to read SSH configuration.\n";
+            banner("EFFECTIVE SSH CONFIGURATION");
 
-                if (!output.empty())
-                {
-                    std::cout
-                        << output
-                        << "\n";
-                }
-
-                continue;
-            }
-
-            std::cout
-                << "\n"
-                << "============================================\n"
-                << "          EFFECTIVE SSH CONFIGURATION\n"
-                << "============================================\n"
-                << "\n";
+            static const std::vector<std::string> keys = {
+                "permitrootlogin ", "permitemptypasswords ", "pubkeyauthentication ",
+                "passwordauthentication ", "kbdinteractiveauthentication ", "maxauthtries ",
+                "logingracetime ", "x11forwarding ", "allowtcpforwarding ",
+                "allowagentforwarding ", "compression " };
 
             std::istringstream stream(output);
             std::string line;
 
             while (std::getline(stream, line))
             {
-                if (
-                    line.rfind("permitrootlogin ", 0) == 0 ||
-                    line.rfind("permitemptypasswords ", 0) == 0 ||
-                    line.rfind("pubkeyauthentication ", 0) == 0 ||
-                    line.rfind("passwordauthentication ", 0) == 0 ||
-                    line.rfind("kbdinteractiveauthentication ", 0) == 0 ||
-                    line.rfind("maxauthtries ", 0) == 0 ||
-                    line.rfind("logingracetime ", 0) == 0 ||
-                    line.rfind("x11forwarding ", 0) == 0 ||
-                    line.rfind("allowtcpforwarding ", 0) == 0 ||
-                    line.rfind("allowagentforwarding ", 0) == 0 ||
-                    line.rfind("compression ", 0) == 0
-                    )
+                for (const auto& key : keys)
                 {
-                    std::cout << line << "\n";
+                    if (line.rfind(key, 0) == 0)
+                    {
+                        std::cout << line << "\n";
+                        break;
+                    }
                 }
             }
 
             std::cout << "\n";
-
             continue;
         }
 
         if (choice == "5")
         {
-            if (!checkRootOrSudo())
-            {
-                continue;
-            }
-
-            std::cout
-                << "\n"
-                << "Restore backup functionality.\n"
-                << "\n";
-
+            restoreConfiguration();
             continue;
         }
 
         if (choice == "6")
         {
-            if (!checkRootOrSudo())
-            {
-                continue;
-            }
+            if (!checkRootOrSudo()) continue;
 
             if (!checkScript())
             {
-                std::cout
-                    << "\n"
-                    << "SSH hardening script was not found:\n"
-                    << HARDENING_SCRIPT
-                    << "\n\n";
-
-                std::cout
-                    << "Use the Web API or the existing "
-                    << "installation mechanism to install "
-                    << "the script.\n";
-
+                std::cout << "\nSSH hardening script was not found:\n" << HARDENING_SCRIPT << "\n\n"
+                    << "Use the Web API or the existing installation mechanism to install the script.\n";
                 continue;
             }
 
-            std::cout
-                << "\n"
-                << "SSH hardening script is already installed:\n"
-                << HARDENING_SCRIPT
-                << "\n";
-
+            std::cout << "\nSSH hardening script is already installed:\n" << HARDENING_SCRIPT << "\n";
             continue;
         }
 
-        std::cout
-            << "\n"
-            << "Invalid option.\n";
+        std::cout << "\nInvalid option.\n";
     }
 }
-
 
 bool SSHHardening::isEnabled() const
 {
     return hardeningEnabled;
 }
 
+// ------------------------------------------------------------- web API
 
 bool SSHHardening::webInstall()
 {
-    std::cout
-        << "\n============================================\n"
-        << "        INSTALL SSH HARDENING\n"
-        << "============================================\n\n";
+    banner("INSTALL SSH HARDENING");
 
-
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
+    if (!checkRootOrSudo()) return false;
 
     if (!commandExists("python3"))
     {
-        std::cout
-            << "python3 is not installed.\n";
-
+        std::cout << "python3 is not installed.\n";
         return false;
     }
-
 
     std::string output;
-
     int exitCode = -1;
 
+    const auto removeTemp = [&] { executeRemote("rm -f " + shellQuote(HARDENING_TEMP_SCRIPT), output, exitCode, true); };
 
-    if (!executeRemote(
-        "mkdir -p " +
-        shellQuote(SERVERGUARD_DIR),
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote("mkdir -p " + shellQuote(SERVERGUARD_DIR), output, exitCode, true))
     {
-        std::cout
-            << "Cannot create ServerGuard directory.\n";
-
-
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
-
+        std::cout << "Cannot create ServerGuard directory.\n";
+        printIfNotEmpty(output);
         return false;
     }
-
 
     if (!commandExists("curl"))
     {
-        std::cout
-            << "curl is not installed.\n"
-            << "Installing curl...\n";
+        std::cout << "curl is not installed.\nInstalling curl...\n";
 
-
-        output.clear();
-
-        exitCode = -1;
-
-
-        if (!executeRemote(
-            "apt-get update && "
-            "DEBIAN_FRONTEND=noninteractive "
-            "apt-get install -y curl",
-            output,
-            exitCode,
-            true
-        ))
+        if (!executeRemote("apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y curl",
+            output, exitCode, true))
         {
-            std::cout
-                << "Cannot install curl.\n";
-
-
-            if (!output.empty())
-            {
-                std::cout
-                    << output
-                    << "\n";
-            }
-
-
+            std::cout << "Cannot install curl.\n";
+            printIfNotEmpty(output);
             return false;
         }
     }
 
-
     if (checkScript())
     {
-        std::cout
-            << "SSH Hardening script is already installed.\n";
-
+        std::cout << "SSH Hardening script is already installed.\n";
         return true;
     }
 
+    if (!downloadUpdate()) return false;
 
-    if (!downloadUpdate())
-    {
-        return false;
-    }
-
-
-    std::cout
-        << "Verifying downloaded SSH Hardening script...\n";
-
+    std::cout << "Verifying downloaded SSH Hardening script...\n";
 
     if (!verifyUpdate())
     {
-        std::cout
-            << "Downloaded SSH Hardening script failed verification.\n";
-
-
-        output.clear();
-
-        exitCode = -1;
-
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(HARDENING_TEMP_SCRIPT),
-            output,
-            exitCode,
-            true
-        );
-
-
+        std::cout << "Downloaded SSH Hardening script failed verification.\n";
+        removeTemp();
         return false;
     }
-
 
     if (!installUpdatedScript())
     {
-        std::cout
-            << "Cannot install SSH Hardening script.\n";
-
-
-        output.clear();
-
-        exitCode = -1;
-
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(HARDENING_TEMP_SCRIPT),
-            output,
-            exitCode,
-            true
-        );
-
-
+        std::cout << "Cannot install SSH Hardening script.\n";
+        removeTemp();
         return false;
     }
-
 
     if (!checkScript())
     {
-        std::cout
-            << "SSH Hardening installation verification failed.\n";
-
+        std::cout << "SSH Hardening installation verification failed.\n";
         return false;
     }
 
+    removeTemp();
 
-    executeRemote(
-        "rm -f " +
-        shellQuote(HARDENING_TEMP_SCRIPT),
-        output,
-        exitCode,
-        true
-    );
-
-
-    std::cout
-        << "\n============================================\n"
-        << "   SSH HARDENING INSTALLATION SUCCESSFUL\n"
-        << "============================================\n"
-        << "Script:\n"
-        << HARDENING_SCRIPT
-        << "\n\n"
+    std::cout << "\n" << LINE << "   SSH HARDENING INSTALLATION SUCCESSFUL\n" << LINE
+        << "Script:\n" << HARDENING_SCRIPT << "\n\n"
         << "SSH configuration was NOT changed.\n"
-        << "Use Apply Hardening to apply the configuration.\n"
-        << "============================================\n";
-
+        << "Use Apply Hardening to apply the configuration.\n" << LINE;
 
     return true;
 }
 
-
 bool SSHHardening::webRemove()
 {
-    std::cout
-        << "\n============================================\n"
-        << "        REMOVE SSH HARDENING\n"
-        << "============================================\n\n";
+    banner("REMOVE SSH HARDENING");
 
-
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
+    if (!checkRootOrSudo()) return false;
 
     std::string output;
-
     int exitCode = -1;
 
+    const std::string restoreCommand =
+        "if [ -f " + shellQuote(HARDENING_CONFIG_BACKUP) + " ]; then cp -p " +
+        shellQuote(HARDENING_CONFIG_BACKUP) + " " + shellQuote(HARDENING_CONFIG) + "; fi";
 
-    if (!executeRemote(
-        "mkdir -p " +
-        shellQuote(HARDENING_BACKUP_DIR),
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote("mkdir -p " + shellQuote(HARDENING_BACKUP_DIR), output, exitCode, true))
     {
-        std::cout
-            << "Cannot create hardening backup directory.\n";
-
+        std::cout << "Cannot create hardening backup directory.\n";
         return false;
     }
 
+    executeRemote("rm -f " + shellQuote(HARDENING_CONFIG_BACKUP), output, exitCode, true);
 
-    executeRemote(
-        "rm -f " +
-        shellQuote(HARDENING_CONFIG_BACKUP),
-        output,
-        exitCode,
-        true
-    );
+    const std::string backupCommand =
+        "if [ -f " + shellQuote(HARDENING_CONFIG) + " ]; then cp -p " +
+        shellQuote(HARDENING_CONFIG) + " " + shellQuote(HARDENING_CONFIG_BACKUP) + "; fi";
 
-
-    std::string backupCommand =
-        "if [ -f " +
-        shellQuote(HARDENING_CONFIG) +
-        " ]; then "
-        "cp -p " +
-        shellQuote(HARDENING_CONFIG) +
-        " " +
-        shellQuote(HARDENING_CONFIG_BACKUP) +
-        "; "
-        "fi";
-
-
-    if (!executeRemote(
-        backupCommand,
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote(backupCommand, output, exitCode, true))
     {
-        std::cout
-            << "Cannot backup SSH Hardening configuration.\n";
-
+        std::cout << "Cannot backup SSH Hardening configuration.\n";
         return false;
     }
 
+    std::cout << "Removing ServerGuard SSH configuration...\n";
 
-    std::cout
-        << "Removing ServerGuard SSH configuration...\n";
-
-
-    std::string removeConfigCommand =
-        "rm -f " +
-        shellQuote(HARDENING_CONFIG);
-
-
-    if (!executeRemote(
-        removeConfigCommand,
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote("rm -f " + shellQuote(HARDENING_CONFIG), output, exitCode, true))
     {
-        std::cout
-            << "Cannot remove SSH Hardening configuration.\n";
-
+        std::cout << "Cannot remove SSH Hardening configuration.\n";
         return false;
     }
 
-
-    std::cout
-        << "Validating SSH configuration...\n";
-
+    std::cout << "Validating SSH configuration...\n";
 
     if (!isSSHConfigValid())
     {
-        std::cout
-            << "\nSSH configuration became invalid after removal.\n"
+        std::cout << "\nSSH configuration became invalid after removal.\n"
             << "Restoring ServerGuard hardening configuration...\n";
 
+        executeRemote(restoreCommand, output, exitCode, true);
 
-        std::string restoreCommand =
-            "if [ -f " +
-            shellQuote(HARDENING_CONFIG_BACKUP) +
-            " ]; then "
-            "cp -p " +
-            shellQuote(HARDENING_CONFIG_BACKUP) +
-            " " +
-            shellQuote(HARDENING_CONFIG) +
-            "; "
-            "fi";
-
-
-        executeRemote(
-            restoreCommand,
-            output,
-            exitCode,
-            true
-        );
-
-
-        if (isSSHConfigValid())
-        {
-            std::cout
-                << "SSH Hardening configuration restored.\n";
-        }
-        else
-        {
-            std::cout
-                << "WARNING: SSH configuration could not be "
-                << "automatically restored.\n";
-        }
-
+        if (isSSHConfigValid()) std::cout << "SSH Hardening configuration restored.\n";
+        else std::cout << "WARNING: SSH configuration could not be automatically restored.\n";
 
         return false;
     }
 
+    std::cout << "Removing SSH Hardening script...\n";
 
-    std::cout
-        << "Removing SSH Hardening script...\n";
-
-
-    std::string removeScriptCommand =
-        "rm -f " +
-        shellQuote(HARDENING_SCRIPT) +
-        " " +
-        shellQuote(HARDENING_TEMP_SCRIPT);
-
-
-    if (!executeRemote(
-        removeScriptCommand,
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote("rm -f " + shellQuote(HARDENING_SCRIPT) + " " + shellQuote(HARDENING_TEMP_SCRIPT),
+        output, exitCode, true))
     {
-        std::cout
-            << "Cannot remove SSH Hardening script.\n";
-
-
-        std::string restoreCommand =
-            "if [ -f " +
-            shellQuote(HARDENING_CONFIG_BACKUP) +
-            " ]; then "
-            "cp -p " +
-            shellQuote(HARDENING_CONFIG_BACKUP) +
-            " " +
-            shellQuote(HARDENING_CONFIG) +
-            "; "
-            "fi";
-
-
-        executeRemote(
-            restoreCommand,
-            output,
-            exitCode,
-            true
-        );
-
-
+        std::cout << "Cannot remove SSH Hardening script.\n";
+        executeRemote(restoreCommand, output, exitCode, true);
         return false;
     }
 
-
-    output.clear();
-
-    exitCode = -1;
-
-
-    if (executeRemote(
-        "test -f " +
-        shellQuote(HARDENING_SCRIPT),
-        output,
-        exitCode,
-        false
-    ))
+    if (executeRemote("test -f " + shellQuote(HARDENING_SCRIPT), output, exitCode, false))
     {
-        std::cout
-            << "SSH Hardening script still exists.\n";
-
+        std::cout << "SSH Hardening script still exists.\n";
         return false;
     }
-
 
     if (!isSSHConfigValid())
     {
-        std::cout
-            << "Final SSH configuration validation failed.\n";
-
+        std::cout << "Final SSH configuration validation failed.\n";
         return false;
     }
 
+    std::cout << "Reloading SSH service...\n";
 
-    std::cout
-        << "Reloading SSH service...\n";
-
-
-    std::string reloadCommand =
-        "systemctl reload ssh 2>/dev/null || "
-        "systemctl reload sshd 2>/dev/null";
-
-
-    if (!executeRemote(
-        reloadCommand,
-        output,
-        exitCode,
-        true
-    ))
+    if (!executeRemote("systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null",
+        output, exitCode, true))
     {
-        std::cout
-            << "SSH reload failed.\n";
-
+        std::cout << "SSH reload failed.\n";
         return false;
     }
-
 
     hardeningEnabled = false;
 
-
-    std::cout
-        << "\n============================================\n"
-        << "     SSH HARDENING REMOVED SUCCESSFULLY\n"
-        << "============================================\n"
-        << "Script removed:\n"
-        << HARDENING_SCRIPT
-        << "\n\n"
-        << "ServerGuard configuration removed:\n"
-        << HARDENING_CONFIG
-        << "\n\n"
-        << "Backup:\n"
-        << HARDENING_CONFIG_BACKUP
-        << "\n\n"
+    std::cout << "\n" << LINE << "     SSH HARDENING REMOVED SUCCESSFULLY\n" << LINE
+        << "Script removed:\n" << HARDENING_SCRIPT << "\n\n"
+        << "ServerGuard configuration removed:\n" << HARDENING_CONFIG << "\n\n"
+        << "Backup:\n" << HARDENING_CONFIG_BACKUP << "\n\n"
         << "Main SSH configuration was NOT deleted.\n"
-        << "SSH configuration: VALID\n"
-        << "============================================\n";
-
+        << "SSH configuration: VALID\n" << LINE;
 
     return true;
 }
@@ -2832,333 +1152,100 @@ bool SSHHardening::webApply()
 {
     if (!keyAuthentication)
     {
-        std::cout
-            << "\n"
-            << "============================================\n"
-            << "       SSH HARDENING SAFETY CHECK\n"
-            << "============================================\n"
+        std::cout << "\n" << LINE << "       SSH HARDENING SAFETY CHECK\n" << LINE
             << "\n"
             << "[FAIL] ServerGuard is connected using password authentication.\n"
             << "[FAIL] SSH hardening was blocked for safety.\n"
             << "[INFO] Password authentication will NOT be disabled.\n"
-            << "[INFO] Connect to the server using an SSH private key first.\n"
-            << "\n";
-
+            << "[INFO] Connect to the server using an SSH private key first.\n\n";
         return false;
     }
 
-
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
+    if (!checkRootOrSudo()) return false;
 
     if (!checkScript())
     {
-        std::cout
-            << "SSH Hardening script was not found:\n"
-            << HARDENING_SCRIPT
-            << "\n";
-
+        std::cout << "SSH Hardening script was not found:\n" << HARDENING_SCRIPT << "\n";
         return false;
     }
 
-
-    if (!setPermissions())
-    {
-        return false;
-    }
-
-
-    return runHardening();
+    return setPermissions() && runHardening();
 }
-
 
 bool SSHHardening::webValidate()
 {
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
-
-    return isSSHConfigValid();
+    return checkRootOrSudo() && isSSHConfigValid();
 }
-
 
 bool SSHHardening::webUpdate()
 {
     return update();
 }
 
-
 std::string SSHHardening::webStatus()
 {
     std::string output;
-
     int exitCode = -1;
 
+    const bool sshActive = checkSSHService();
 
-    bool sshActive =
-        checkSSHService();
+    std::string permitRootLogin = "unknown", permitEmptyPasswords = "unknown", maxAuthTries = "unknown",
+        loginGraceTime = "unknown", x11Forwarding = "unknown", allowTcpForwarding = "unknown",
+        allowAgentForwarding = "unknown", compression = "unknown";
 
-
-    std::string permitRootLogin = "unknown";
-    std::string permitEmptyPasswords = "unknown";
-    std::string maxAuthTries = "unknown";
-    std::string loginGraceTime = "unknown";
-    std::string x11Forwarding = "unknown";
-    std::string allowTcpForwarding = "unknown";
-    std::string allowAgentForwarding = "unknown";
-    std::string compression = "unknown";
-
-
-    if (sshActive)
+    if (sshActive && executeRemote("sshd -T 2>/dev/null", output, exitCode, sudoRequired))
     {
-        if (executeRemote(
-            "sshd -T 2>/dev/null",
-            output,
-            exitCode,
-            sudoRequired
-        ))
-        {
-            auto getValue =
-                [&](const std::string& name)
-                {
-                    std::istringstream stream(output);
-
-                    std::string line;
-
-
-                    while (std::getline(stream, line))
-                    {
-                        std::istringstream lineStream(line);
-
-                        std::string key;
-                        std::string value;
-
-
-                        lineStream
-                            >> key
-                            >> value;
-
-
-                        std::transform(
-                            key.begin(),
-                            key.end(),
-                            key.begin(),
-                            [](unsigned char c)
-                            {
-                                return static_cast<char>(
-                                    std::tolower(c)
-                                    );
-                            }
-                        );
-
-
-                        if (key == name)
-                        {
-                            return value;
-                        }
-                    }
-
-
-                    return std::string("unknown");
-                };
-
-
-            permitRootLogin =
-                getValue("permitrootlogin");
-
-            permitEmptyPasswords =
-                getValue("permitemptypasswords");
-
-            maxAuthTries =
-                getValue("maxauthtries");
-
-            loginGraceTime =
-                getValue("logingracetime");
-
-            x11Forwarding =
-                getValue("x11forwarding");
-
-            allowTcpForwarding =
-                getValue("allowtcpforwarding");
-
-            allowAgentForwarding =
-                getValue("allowagentforwarding");
-
-            compression =
-                getValue("compression");
-        }
+        permitRootLogin = sshdValue(output, "permitrootlogin");
+        permitEmptyPasswords = sshdValue(output, "permitemptypasswords");
+        maxAuthTries = sshdValue(output, "maxauthtries");
+        loginGraceTime = sshdValue(output, "logingracetime");
+        x11Forwarding = sshdValue(output, "x11forwarding");
+        allowTcpForwarding = sshdValue(output, "allowtcpforwarding");
+        allowAgentForwarding = sshdValue(output, "allowagentforwarding");
+        compression = sshdValue(output, "compression");
     }
 
+    const bool realHardening =
+        sshActive && permitEmptyPasswords == "no" && maxAuthTries == "3" && loginGraceTime == "30" &&
+        x11Forwarding == "no" && allowAgentForwarding == "no" && compression == "no";
 
-    bool rootProtected =
-        permitRootLogin == "prohibit-password" ||
-        permitRootLogin == "without-password";
+    hardeningEnabled = realHardening;
 
-
-    bool realHardening =
-        sshActive &&
-        permitEmptyPasswords == "no" &&
-        maxAuthTries == "3" &&
-        loginGraceTime == "30" &&
-        x11Forwarding == "no" &&
-        allowAgentForwarding == "no" &&
-        compression == "no";
-
-
-    hardeningEnabled =
-        realHardening;
-
-
-    bool scriptInstalled =
-        checkScript();
-
-
-    bool configValid =
-        isSSHConfigValid();
-
+    const auto b = [](bool v) { return v ? "true" : "false"; };
+    const auto s = [](const std::string& k, const std::string& v) { return ",\"" + k + "\":\"" + jsonEscape(v) + "\""; };
 
     std::ostringstream json;
-
-
-    json
-        << "{"
-        << "\"installed\":"
-        << (scriptInstalled ? "true" : "false")
-
-        << ",\"enabled\":"
-        << (realHardening ? "true" : "false")
-
-        << ",\"sshActive\":"
-        << (sshActive ? "true" : "false")
-
-        << ",\"configValid\":"
-        << (configValid ? "true" : "false")
-
-        << ",\"scriptPath\":\""
-        << HARDENING_SCRIPT
-        << "\""
-
-        << ",\"configPath\":\""
-        << SSH_CONFIG
-        << "\""
-
-        << ",\"hardeningConfig\":\""
-        << HARDENING_CONFIG
-        << "\""
-
-        << ",\"permitRootLogin\":\""
-        << permitRootLogin
-        << "\""
-
-        << ",\"permitEmptyPasswords\":\""
-        << permitEmptyPasswords
-        << "\""
-
-        << ",\"maxAuthTries\":\""
-        << maxAuthTries
-        << "\""
-
-        << ",\"loginGraceTime\":\""
-        << loginGraceTime
-        << "\""
-
-        << ",\"x11Forwarding\":\""
-        << x11Forwarding
-        << "\""
-
-        << ",\"allowTcpForwarding\":\""
-        << allowTcpForwarding
-        << "\""
-
-        << ",\"allowAgentForwarding\":\""
-        << allowAgentForwarding
-        << "\""
-
-        << ",\"compression\":\""
-        << compression
-        << "\""
-
+    json << "{\"installed\":" << b(checkScript())
+        << ",\"enabled\":" << b(realHardening)
+        << ",\"sshActive\":" << b(sshActive)
+        << ",\"configValid\":" << b(isSSHConfigValid())
+        << s("scriptPath", HARDENING_SCRIPT)
+        << s("configPath", SSH_CONFIG)
+        << s("hardeningConfig", HARDENING_CONFIG)
+        << s("permitRootLogin", permitRootLogin)
+        << s("permitEmptyPasswords", permitEmptyPasswords)
+        << s("maxAuthTries", maxAuthTries)
+        << s("loginGraceTime", loginGraceTime)
+        << s("x11Forwarding", x11Forwarding)
+        << s("allowTcpForwarding", allowTcpForwarding)
+        << s("allowAgentForwarding", allowAgentForwarding)
+        << s("compression", compression)
         << "}";
-
 
     return json.str();
 }
 
-
 std::string SSHHardening::webBackups()
 {
     std::string output;
-
     int exitCode = -1;
 
-
-    std::string command =
-        "ls -lah " +
-        shellQuote(BACKUP_DIR) +
-        " 2>/dev/null";
-
-
-    executeRemote(
-        command,
-        output,
-        exitCode,
-        false
-    );
-
+    executeRemote("ls -lah " + shellQuote(BACKUP_DIR) + " 2>/dev/null", output, exitCode, sudoRequired);
 
     std::ostringstream json;
-
-
-    json
-        << "{"
-        << "\"ok\":"
-        << (exitCode == 0 ? "true" : "false")
-        << ",\"path\":\""
-        << BACKUP_DIR
-        << "\""
-        << ",\"text\":\"";
-
-
-    for (char c : output)
-    {
-        switch (c)
-        {
-        case '\\':
-            json << "\\\\";
-            break;
-
-        case '"':
-            json << "\\\"";
-            break;
-
-        case '\n':
-            json << "\\n";
-            break;
-
-        case '\r':
-            json << "\\r";
-            break;
-
-        case '\t':
-            json << "\\t";
-            break;
-
-        default:
-            json << c;
-            break;
-        }
-    }
-
-
-    json
-        << "\""
-        << "}";
-
+    json << "{\"ok\":" << (exitCode == 0 ? "true" : "false")
+        << ",\"path\":\"" << jsonEscape(BACKUP_DIR) << "\""
+        << ",\"text\":\"" << jsonEscape(output) << "\"}";
 
     return json.str();
 }
