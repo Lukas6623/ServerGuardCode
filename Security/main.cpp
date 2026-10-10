@@ -24,6 +24,7 @@
 #include "Help.h"
 #include "WebServer.h"
 #include "Web.h"
+#include "Nano.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -1355,6 +1356,7 @@ void runServerTerminal(
     std::cout << "Type 'ls' to list files.\n";
     std::cout << "Type 'pwd' to show current directory.\n";
     std::cout << "Type 'cd <directory>' to change directory.\n";
+    std::cout << "Type 'nano <file>' to edit a file on the server.\n";
     std::cout << "Type 'security' to open security menu.\n";
     std::cout << "Type 'telegram' to open Telegram Bot menu.\n";
     std::cout << "Type 'hardening' to open SSH hardening menu.\n";
@@ -1409,6 +1411,20 @@ void runServerTerminal(
                 std::string arg = trim(lc.substr(3));
 
                 handleWebCommand(arg, webServer);
+
+                continue;
+            }
+        }
+
+        // nano <file> - встроенный редактор файлов на сервере (Nano.h)
+        {
+            std::string t = trim(command);
+
+            if (t == "nano" || t.rfind("nano ", 0) == 0)
+            {
+                std::string arg = trim(t.substr(4));
+
+                runNano(session, cfg.password, currentDirectory, arg);
 
                 continue;
             }
@@ -1505,7 +1521,7 @@ void runServerTerminal(
 
         std::cout
             << "Available commands: "
-            << "help, ls, pwd, cd, security, telegram, "
+            << "help, ls, pwd, cd, nano, security, telegram, "
             << "hardening, sshkeys, fileguard, web, exit\n";
     }
 }
