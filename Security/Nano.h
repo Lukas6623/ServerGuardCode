@@ -1,10 +1,5 @@
 #pragma once
 
-// ============================================================
-//  Nano.h - полноэкранный клон GNU nano для ServerGuard (Windows)
-//  Файл скачивается по SSH, правится локально, загружается обратно.
-//  Только заголовок (header-only).
-// ============================================================
 
 #include <iostream>
 #include <string>
@@ -27,7 +22,7 @@
 
 namespace nanoed
 {
-    static const size_t MAX_FILE_SIZE = 1024 * 1024; // 1 MB
+    static const size_t MAX_FILE_SIZE = 1024 * 1024; 
     static const size_t MAX_UNDO = 50;
 
     typedef std::wstring WStr;
@@ -40,7 +35,7 @@ namespace nanoed
         std::string err;
     };
 
-    // ---------- вспомогательные функции ----------
+
 
     inline std::string trimStr(const std::string& s)
     {
@@ -118,7 +113,7 @@ namespace nanoed
         return s;
     }
 
-    // ---------- выполнение команды на сервере ----------
+
 
     inline RunResult runRemote(
         LIBSSH2_SESSION* session,
@@ -179,7 +174,7 @@ namespace nanoed
         return res;
     }
 
-    // ---------- загрузка и сохранение ----------
+
 
     enum class FileKind { Missing, Regular, Directory, Error };
 
@@ -301,9 +296,6 @@ namespace nanoed
         return ok;
     }
 
-    // ============================================================
-    //  Редактор
-    // ============================================================
 
     enum KeyType
     {
