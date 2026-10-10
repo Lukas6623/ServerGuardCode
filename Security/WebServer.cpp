@@ -1,8 +1,5 @@
 #define NOMINMAX
-#include <iomanip>
 #include "WebServer.h"
-#include <iomanip>
-#include <sstream>
 #include "SSHKeyGuard.h"
 #include "Security.h"
 #include "SSHHardening.h"
@@ -18,7 +15,6 @@
 #include <random>
 #include <sstream>
 #include <string>
-#include <chrono>
 
 static constexpr size_t MAX_HEADER_BYTES = 16 * 1024;
 static constexpr size_t MAX_BODY_BYTES = 64 * 1024;
@@ -28,6 +24,15 @@ static constexpr size_t MAX_CLIENTS = 32;
 static constexpr int SOCKET_TIMEOUT_MS = 15000;
 
 static const char* AUTH_COOKIE = "sg_token";
+
+
+
+static const std::string FILEGUARD_SERVICE = "serverguard-fileguard";
+
+static const std::string FILEGUARD_DATA_DIR = "/opt/serverguard/data/";
+static const std::string FILEGUARD_EVENTS = FILEGUARD_DATA_DIR + "file_events.json";
+static const std::string FILEGUARD_BASELINE = FILEGUARD_DATA_DIR + "fileguard_baseline.json";
+static const std::string FILEGUARD_STATE = FILEGUARD_DATA_DIR + "fileguard_state.json";
 
 static std::string toLower(std::string value)
 {
@@ -538,6 +543,13 @@ bool WebServer::start()
     {
         std::cout
             << "[WebServer] Telegram Bot connected"
+            << std::endl;
+    }
+
+    if (session)
+    {
+        std::cout
+            << "[WebServer] FileGuard API available"
             << std::endl;
     }
 
@@ -1312,6 +1324,39 @@ void WebServer::handleApi(
     }
 
     if (
+        path == "/api/fileguard" ||
+        path.rfind(
+            "/api/fileguard/",
+            0
+        ) == 0
+        )
+    {
+        std::string action;
+
+        if (path == "/api/fileguard")
+        {
+            action = "status";
+        }
+        else
+        {
+            action =
+                path.substr(
+                    std::string(
+                        "/api/fileguard/"
+                    ).size()
+                );
+        }
+
+        handleFileGuard(
+            clientSocket,
+            request.method,
+            action
+        );
+
+        return;
+    }
+
+    if (
         request.method == "GET" &&
         path == "/api/health"
         )
@@ -1328,6 +1373,9 @@ void WebServer::handleApi(
         bool telegramModule =
             telegramBot.load() != nullptr;
 
+        bool fileGuardModule =
+            session != nullptr;
+
         std::ostringstream json;
 
         json
@@ -1343,6 +1391,8 @@ void WebServer::handleApi(
             << (hardeningModule ? "true" : "false")
             << ",\"telegram\":"
             << (telegramModule ? "true" : "false")
+            << ",\"fileguard\":"
+            << (fileGuardModule ? "true" : "false")
             << "}";
 
         sendJson(
@@ -1400,6 +1450,9 @@ void WebServer::handleApi(
         bool telegramModule =
             telegramBot.load() != nullptr;
 
+        bool fileGuardModule =
+            session != nullptr;
+
         std::ostringstream json;
 
         json
@@ -1412,7 +1465,8 @@ void WebServer::handleApi(
             << (hardeningModule ? "true" : "false")
             << ",\"sshkeys\":"
             << (sshKeys ? "true" : "false")
-            << ",\"fileguard\":false"
+            << ",\"fileguard\":"
+            << (fileGuardModule ? "true" : "false")
             << "}";
 
         sendJson(
@@ -2155,4 +2209,283 @@ bool WebServer::executeSshCommand(
     libssh2_channel_free(channel);
 
     return exitCode == 0;
+}
+
+
+
+void WebServer::sendRemoteJsonFile(
+    SOCKET clientSocket,
+    const std::string& remotePath,
+    const std::string& fallbackJson
+)
+{
+    std::string output;
+
+
+    bool ok =
+        executeSshCommand(
+            "cat " + remotePath + " 2>/dev/null",
+            output
+        );
+
+    std::string text =
+        trim(output);
+
+    if (
+        !ok ||
+        text.empty() ||
+        (text[0] != '[' && text[0] != '{')
+        )
+    {
+        sendJson(
+            clientSocket,
+            200,
+            fallbackJson
+        );
+
+        return;
+    }
+
+    sendJson(
+        clientSocket,
+        200,
+        text
+    );
+}
+
+void WebServer::handleFileGuard(
+    SOCKET clientSocket,
+    const std::string& method,
+    const std::string& action
+)
+{
+    if (!session)
+    {
+        sendJson(
+            clientSocket,
+            503,
+            "{\"error\":\"SSH session is not available\"}"
+        );
+
+        return;
+    }
+
+    const bool isGet = method == "GET";
+    const bool isPost = method == "POST";
+
+
+
+    if (action == "status")
+    {
+        if (!isGet)
+        {
+            sendJson(clientSocket, 405, "{\"error\":\"Method Not Allowed\"}");
+            return;
+        }
+
+
+        std::string command =
+            "echo \"$(systemctl is-active " + FILEGUARD_SERVICE + " 2>/dev/null)\"; "
+            "echo \"$(systemctl is-enabled " + FILEGUARD_SERVICE + " 2>/dev/null)\"; "
+            "echo \"$(systemctl list-unit-files " + FILEGUARD_SERVICE +
+            ".service --no-legend 2>/dev/null | wc -l)\"; "
+            "if [ -f " + FILEGUARD_BASELINE + " ]; then echo 1; else echo 0; fi; "
+            "true";
+
+        std::string output;
+
+        executeSshCommand(command, output);
+
+        std::istringstream stream(output);
+
+        std::string state;
+        std::string enabled;
+        std::string installed;
+        std::string baselineFlag;
+
+        std::getline(stream, state);
+        std::getline(stream, enabled);
+        std::getline(stream, installed);
+        std::getline(stream, baselineFlag);
+
+        state = trim(state);
+        enabled = trim(enabled);
+        installed = trim(installed);
+        baselineFlag = trim(baselineFlag);
+
+        bool active =
+            state == "active";
+
+        bool isInstalled =
+            !installed.empty() &&
+            installed != "0";
+
+        std::ostringstream json;
+
+        json
+            << "{"
+            << "\"available\":true"
+            << ",\"service\":\"" << jsonEscape(FILEGUARD_SERVICE) << "\""
+            << ",\"state\":\"" << jsonEscape(state.empty() ? "unknown" : state) << "\""
+            << ",\"active\":" << (active ? "true" : "false")
+            << ",\"enabled\":" << (enabled == "enabled" ? "true" : "false")
+            << ",\"installed\":" << (isInstalled ? "true" : "false")
+            << ",\"baseline\":" << (baselineFlag == "1" ? "true" : "false")
+            << "}";
+
+        sendJson(clientSocket, 200, json.str());
+
+        return;
+    }
+
+    if (action == "events")
+    {
+        if (!isGet)
+        {
+            sendJson(clientSocket, 405, "{\"error\":\"Method Not Allowed\"}");
+            return;
+        }
+
+        sendRemoteJsonFile(clientSocket, FILEGUARD_EVENTS, "[]");
+
+        return;
+    }
+
+    if (action == "baseline")
+    {
+        if (!isGet)
+        {
+            sendJson(clientSocket, 405, "{\"error\":\"Method Not Allowed\"}");
+            return;
+        }
+
+        sendRemoteJsonFile(clientSocket, FILEGUARD_BASELINE, "{}");
+
+        return;
+    }
+
+    if (action == "state")
+    {
+        if (!isGet)
+        {
+            sendJson(clientSocket, 405, "{\"error\":\"Method Not Allowed\"}");
+            return;
+        }
+
+        sendRemoteJsonFile(clientSocket, FILEGUARD_STATE, "{}");
+
+        return;
+    }
+
+    if (action == "logs")
+    {
+        if (!isGet)
+        {
+            sendJson(clientSocket, 405, "{\"error\":\"Method Not Allowed\"}");
+            return;
+        }
+
+        std::string output;
+
+        executeSshCommand(
+            "journalctl -u " + FILEGUARD_SERVICE +
+            " -n 200 --no-pager 2>&1",
+            output
+        );
+
+        sendJson(
+            clientSocket,
+            200,
+            "{\"logs\":\"" + jsonEscape(output) + "\"}"
+        );
+
+        return;
+    }
+
+
+    std::string command;
+
+    if (action == "start")
+    {
+        command =
+            "systemctl start " + FILEGUARD_SERVICE + " 2>&1";
+    }
+    else if (action == "stop")
+    {
+        command =
+            "systemctl stop " + FILEGUARD_SERVICE + " 2>&1";
+    }
+    else if (action == "restart")
+    {
+        command =
+            "systemctl restart " + FILEGUARD_SERVICE + " 2>&1";
+    }
+    else if (action == "enable")
+    {
+        command =
+            "systemctl enable " + FILEGUARD_SERVICE + " 2>&1";
+    }
+    else if (action == "disable")
+    {
+        command =
+            "systemctl disable " + FILEGUARD_SERVICE + " 2>&1";
+    }
+    else if (action == "clear-events")
+    {
+        command =
+            "printf '[]\\n' > " + FILEGUARD_EVENTS +
+            " && chmod 600 " + FILEGUARD_EVENTS + " 2>&1";
+    }
+    else if (action == "rebuild-baseline")
+    {
+
+        command =
+            "systemctl stop " + FILEGUARD_SERVICE + " 2>&1; "
+            "rm -f " + FILEGUARD_BASELINE + " " + FILEGUARD_STATE + " 2>&1; "
+            "systemctl start " + FILEGUARD_SERVICE + " 2>&1";
+    }
+    else
+    {
+        sendJson(
+            clientSocket,
+            404,
+            "{\"error\":\"FileGuard endpoint not found\"}"
+        );
+
+        return;
+    }
+
+    if (!isPost)
+    {
+        sendJson(
+            clientSocket,
+            405,
+            "{\"error\":\"Use POST for this action\"}"
+        );
+
+        return;
+    }
+
+    std::string output;
+
+    bool ok =
+        executeSshCommand(
+            command,
+            output
+        );
+
+    std::ostringstream json;
+
+    json
+        << "{"
+        << "\"ok\":" << (ok ? "true" : "false")
+        << ",\"action\":\"" << jsonEscape(action) << "\""
+        << ",\"output\":\"" << jsonEscape(trim(output)) << "\""
+        << "}";
+
+    sendJson(
+        clientSocket,
+        ok ? 200 : 500,
+        json.str()
+    );
 }

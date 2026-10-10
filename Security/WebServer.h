@@ -132,6 +132,22 @@ private:
         const std::string& body
     );
 
+
+
+    void handleFileGuard(
+        SOCKET clientSocket,
+        const std::string& method,
+        const std::string& action
+    );
+
+    void sendRemoteJsonFile(
+        SOCKET clientSocket,
+        const std::string& remotePath,
+        const std::string& fallbackJson
+    );
+
+
+
     bool executeSshCommand(
         const std::string& command,
         std::string& output
