@@ -5,53 +5,17 @@
 #include <algorithm>
 #include <cctype>
 
-
-static const std::string SSHKEY_SCRIPT =
-"/opt/serverguard/ssh_key_guard.py";
-
-
-static const std::string SSHKEY_SERVICE =
-"serverguard-ssh-key.service";
-
-
-static const std::string SSHKEY_SERVICE_PATH =
-"/etc/systemd/system/serverguard-ssh-key.service";
-
-
-static const std::string SSHKEY_DATA_DIR =
-"/opt/serverguard/data";
-
-
-static const std::string SSHKEY_EVENTS_FILE =
-"/opt/serverguard/data/ssh_key_events.json";
-
-
-static const std::string SSHKEY_STATE_FILE =
-"/opt/serverguard/data/ssh_key_state.json";
-
-
-static const std::string SSHKEY_BACKUP_DIR =
-"/opt/serverguard/backups/ssh-key-guard";
-
-
-static const std::string SSHKEY_BACKUP_SCRIPT =
-"/opt/serverguard/backups/ssh-key-guard/ssh_key_guard.py";
-
-
-static const std::string SSHKEY_TEMP_SCRIPT =
-"/opt/serverguard/ssh_key_guard.py.update";
-
-
-static const std::string SSHKEY_UPDATE_URL =
-"https://raw.githubusercontent.com/"
-"Lukas6623/ServerGuard/main/"
-"ssh_key_guard.py";
-
-
-static const std::string SSHKEY_AUDIT_RULE =
-"/etc/audit/rules.d/"
-"serverguard-ssh-key.rules";
-
+static const std::string SSHKEY_SCRIPT = "/opt/serverguard/ssh_key_guard.py";
+static const std::string SSHKEY_SERVICE = "serverguard-ssh-key.service";
+static const std::string SSHKEY_SERVICE_PATH = "/etc/systemd/system/serverguard-ssh-key.service";
+static const std::string SSHKEY_DATA_DIR = "/opt/serverguard/data";
+static const std::string SSHKEY_EVENTS_FILE = "/opt/serverguard/data/ssh_key_events.json";
+static const std::string SSHKEY_STATE_FILE = "/opt/serverguard/data/ssh_key_state.json";
+static const std::string SSHKEY_BACKUP_DIR = "/opt/serverguard/backups/ssh-key-guard";
+static const std::string SSHKEY_BACKUP_SCRIPT = "/opt/serverguard/backups/ssh-key-guard/ssh_key_guard.py";
+static const std::string SSHKEY_TEMP_SCRIPT = "/opt/serverguard/ssh_key_guard.py.update";
+static const std::string SSHKEY_UPDATE_URL = "https://raw.githubusercontent.com/Lukas6623/ServerGuard/main/ssh_key_guard.py";
+static const std::string SSHKEY_AUDIT_RULE = "/etc/audit/rules.d/serverguard-ssh-key.rules";
 
 static const std::string SSHKEY_SERVICE_CONTENT = R"([Unit]
 Description=ServerGuard SSH Key Guard
@@ -85,28 +49,15 @@ ReadWritePaths=/opt/serverguard/backups
 WantedBy=multi-user.target
 )";
 
-
-SSHKeyGuard::SSHKeyGuard(
-    LIBSSH2_SESSION* session,
-    const std::string& sudoPassword
-)
-    :
-    session(session),
-    sudoPassword(sudoPassword)
-{}
-
+SSHKeyGuard::SSHKeyGuard(LIBSSH2_SESSION* session, const std::string& sudoPassword)
+    : session(session), sudoPassword(sudoPassword) {}
 
 void SSHKeyGuard::printSeparator()
 {
-    std::cout
-        << "========================================"
-        << std::endl;
+    std::cout << "========================================" << std::endl;
 }
 
-
-std::string SSHKeyGuard::shellQuote(
-    const std::string& value
-)
+std::string SSHKeyGuard::shellQuote(const std::string& value)
 {
     std::string result = "'";
 
@@ -127,10 +78,7 @@ std::string SSHKeyGuard::shellQuote(
     return result;
 }
 
-
-std::string SSHKeyGuard::base64Encode(
-    const std::string& input
-)
+std::string SSHKeyGuard::base64Encode(const std::string& input)
 {
     static const char table[] =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -144,41 +92,22 @@ std::string SSHKeyGuard::base64Encode(
 
     for (unsigned char c : input)
     {
-        val =
-            (val << 8)
-            + c;
-
+        val = (val << 8) + c;
         valb += 8;
 
         while (valb >= 0)
         {
-            output.push_back(
-                table[
-                    (val >> valb)
-                        & 0x3F
-                ]
-            );
-
+            output.push_back(table[(val >> valb) & 0x3F]);
             valb -= 6;
         }
     }
 
     if (valb > -6)
     {
-        output.push_back(
-            table[
-                (
-                    (val << 8)
-                    >> (valb + 8)
-                    )
-                    & 0x3F
-            ]
-        );
+        output.push_back(table[((val << 8) >> (valb + 8)) & 0x3F]);
     }
 
-    while (
-        output.size() % 4
-        )
+    while (output.size() % 4)
     {
         output.push_back('=');
     }
@@ -186,12 +115,7 @@ std::string SSHKeyGuard::base64Encode(
     return output;
 }
 
-
-bool SSHKeyGuard::executeRemote(
-    const std::string& command,
-    std::string& output,
-    int& exitCode
-)
+bool SSHKeyGuard::executeRemote(const std::string& command, std::string& output, int& exitCode)
 {
     output.clear();
 
@@ -199,206 +123,117 @@ bool SSHKeyGuard::executeRemote(
 
     if (session == nullptr)
     {
-        std::cerr
-            << "SSH session is not available."
-            << std::endl;
+        std::cerr << "SSH session is not available." << std::endl;
 
         return false;
     }
 
-
-    std::string remoteCommand =
-        command;
-
+    std::string remoteCommand = command;
 
     if (!sudoPassword.empty())
     {
-        std::string encodedPassword =
-            base64Encode(
-                sudoPassword
-            );
+        std::string encodedPassword = base64Encode(sudoPassword);
 
         remoteCommand =
-            "echo "
-            + shellQuote(
-                encodedPassword
-            )
-            + " | base64 -d | "
-            "sudo -S -p '' bash -c "
-            + shellQuote(
-                command
-            );
+            "echo " + shellQuote(encodedPassword) + " | base64 -d | "
+            "sudo -S -p '' bash -c " + shellQuote(command);
     }
 
-
-    LIBSSH2_CHANNEL* channel =
-        libssh2_channel_open_session(
-            session
-        );
-
+    LIBSSH2_CHANNEL* channel = libssh2_channel_open_session(session);
 
     if (channel == nullptr)
     {
-        std::cerr
-            << "Failed to open SSH channel."
-            << std::endl;
+        std::cerr << "Failed to open SSH channel." << std::endl;
 
         return false;
     }
 
-
-    if (
-        libssh2_channel_exec(
-            channel,
-            remoteCommand.c_str()
-        ) != 0
-        )
+    if (libssh2_channel_exec(channel, remoteCommand.c_str()) != 0)
     {
-        std::cerr
-            << "Failed to execute remote command."
-            << std::endl;
+        std::cerr << "Failed to execute remote command." << std::endl;
 
-        libssh2_channel_free(
-            channel
-        );
+        libssh2_channel_free(channel);
 
         return false;
     }
-
 
     char buffer[4096];
 
-
     while (true)
     {
-        ssize_t bytesRead =
-            libssh2_channel_read(
-                channel,
-                buffer,
-                sizeof(buffer) - 1
-            );
-
+        ssize_t bytesRead = libssh2_channel_read(channel, buffer, sizeof(buffer) - 1);
 
         if (bytesRead > 0)
         {
-            buffer[bytesRead] =
-                '\0';
+            buffer[bytesRead] = '\0';
 
             output += buffer;
 
             continue;
         }
 
-
         if (bytesRead == 0)
         {
             break;
         }
 
-
-        if (
-            bytesRead ==
-            LIBSSH2_ERROR_EAGAIN
-            )
+        if (bytesRead == LIBSSH2_ERROR_EAGAIN)
         {
             continue;
         }
 
-
         break;
     }
 
-
     while (true)
     {
-        ssize_t bytesRead =
-            libssh2_channel_read_stderr(
-                channel,
-                buffer,
-                sizeof(buffer) - 1
-            );
-
+        ssize_t bytesRead = libssh2_channel_read_stderr(channel, buffer, sizeof(buffer) - 1);
 
         if (bytesRead > 0)
         {
-            buffer[bytesRead] =
-                '\0';
+            buffer[bytesRead] = '\0';
 
             output += buffer;
 
             continue;
         }
 
-
         if (bytesRead == 0)
         {
             break;
         }
 
-
-        if (
-            bytesRead ==
-            LIBSSH2_ERROR_EAGAIN
-            )
+        if (bytesRead == LIBSSH2_ERROR_EAGAIN)
         {
             continue;
         }
 
-
         break;
     }
 
+    libssh2_channel_send_eof(channel);
 
-    libssh2_channel_send_eof(
-        channel
-    );
+    libssh2_channel_wait_eof(channel);
 
-    libssh2_channel_wait_eof(
-        channel
-    );
+    exitCode = libssh2_channel_get_exit_status(channel);
 
+    libssh2_channel_close(channel);
 
-    exitCode =
-        libssh2_channel_get_exit_status(
-            channel
-        );
-
-
-    libssh2_channel_close(
-        channel
-    );
-
-    libssh2_channel_free(
-        channel
-    );
-
+    libssh2_channel_free(channel);
 
     return exitCode == 0;
 }
 
-
-bool SSHKeyGuard::commandExists(
-    const std::string& command
-)
+bool SSHKeyGuard::commandExists(const std::string& command)
 {
     std::string output;
 
     int exitCode = -1;
 
+    std::string check = "command -v " + shellQuote(command) + " >/dev/null 2>&1";
 
-    std::string check =
-        "command -v "
-        + shellQuote(command)
-        + " >/dev/null 2>&1";
-
-
-    return executeRemote(
-        check,
-        output,
-        exitCode
-    );
+    return executeRemote(check, output, exitCode);
 }
-
 
 bool SSHKeyGuard::checkRootAccess()
 {
@@ -406,31 +241,13 @@ bool SSHKeyGuard::checkRootAccess()
 
     int exitCode = -1;
 
-
-    if (
-        executeRemote(
-            "id -u",
-            output,
-            exitCode
-        )
-        )
+    if (executeRemote("id -u", output, exitCode))
     {
-        std::string uid =
-            output;
-
+        std::string uid = output;
 
         uid.erase(
-            std::remove_if(
-                uid.begin(),
-                uid.end(),
-                [](unsigned char c)
-                {
-                    return std::isspace(c);
-                }
-            ),
-            uid.end()
-        );
-
+            std::remove_if(uid.begin(), uid.end(), [](unsigned char c) { return std::isspace(c); }),
+            uid.end());
 
         if (uid == "0")
         {
@@ -438,59 +255,35 @@ bool SSHKeyGuard::checkRootAccess()
         }
     }
 
-
     if (sudoPassword.empty())
     {
-        std::cout
-            << "Root privileges are required."
-            << std::endl;
+        std::cout << "Root privileges are required." << std::endl;
 
         return false;
     }
 
+    output.clear();
+
+    exitCode = -1;
+
+    if (executeRemote("sudo -n true", output, exitCode))
+    {
+        return true;
+    }
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        executeRemote(
-            "sudo -n true",
-            output,
-            exitCode
-        )
-        )
+    if (executeRemote("true", output, exitCode))
     {
         return true;
     }
 
-
-    output.clear();
-
-    exitCode = -1;
-
-
-    if (
-        executeRemote(
-            "true",
-            output,
-            exitCode
-        )
-        )
-    {
-        return true;
-    }
-
-
-    std::cout
-        << "Unable to obtain root privileges."
-        << std::endl;
-
+    std::cout << "Unable to obtain root privileges." << std::endl;
 
     return false;
 }
-
 
 bool SSHKeyGuard::scriptExists()
 {
@@ -498,17 +291,8 @@ bool SSHKeyGuard::scriptExists()
 
     int exitCode = -1;
 
-
-    return executeRemote(
-        "test -f "
-        + shellQuote(
-            SSHKEY_SCRIPT
-        ),
-        output,
-        exitCode
-    );
+    return executeRemote("test -f " + shellQuote(SSHKEY_SCRIPT), output, exitCode);
 }
-
 
 bool SSHKeyGuard::serviceExists()
 {
@@ -516,17 +300,8 @@ bool SSHKeyGuard::serviceExists()
 
     int exitCode = -1;
 
-
-    return executeRemote(
-        "test -f "
-        + shellQuote(
-            SSHKEY_SERVICE_PATH
-        ),
-        output,
-        exitCode
-    );
+    return executeRemote("test -f " + shellQuote(SSHKEY_SERVICE_PATH), output, exitCode);
 }
-
 
 bool SSHKeyGuard::isServiceActive()
 {
@@ -534,15 +309,8 @@ bool SSHKeyGuard::isServiceActive()
 
     int exitCode = -1;
 
-
-    return executeRemote(
-        "systemctl is-active --quiet "
-        + SSHKEY_SERVICE,
-        output,
-        exitCode
-    );
+    return executeRemote("systemctl is-active --quiet " + SSHKEY_SERVICE, output, exitCode);
 }
-
 
 bool SSHKeyGuard::isServiceEnabled()
 {
@@ -550,211 +318,117 @@ bool SSHKeyGuard::isServiceEnabled()
 
     int exitCode = -1;
 
-
-    return executeRemote(
-        "systemctl is-enabled --quiet "
-        + SSHKEY_SERVICE,
-        output,
-        exitCode
-    );
+    return executeRemote("systemctl is-enabled --quiet " + SSHKEY_SERVICE, output, exitCode);
 }
-
 
 bool SSHKeyGuard::installPython()
 {
-    if (
-        commandExists(
-            "python3"
-        )
-        )
+    if (commandExists("python3"))
     {
         return true;
     }
 
+    std::cout << "Python3 was not found." << std::endl;
 
-    std::cout
-        << "Python3 was not found."
-        << std::endl;
-
-
-    std::cout
-        << "Installing Python3..."
-        << std::endl;
-
+    std::cout << "Installing Python3..." << std::endl;
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "export DEBIAN_FRONTEND=noninteractive && "
-            "apt-get update -y && "
-            "apt-get install -y python3",
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote(
+        "export DEBIAN_FRONTEND=noninteractive && "
+        "apt-get update -y && "
+        "apt-get install -y python3",
+        output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
 
-
-    return commandExists(
-        "python3"
-    );
+    return commandExists("python3");
 }
-
 
 bool SSHKeyGuard::installCurl()
 {
-    if (
-        commandExists(
-            "curl"
-        )
-        )
+    if (commandExists("curl"))
     {
         return true;
     }
 
+    std::cout << "curl was not found." << std::endl;
 
-    std::cout
-        << "curl was not found."
-        << std::endl;
-
-
-    std::cout
-        << "Installing curl..."
-        << std::endl;
-
+    std::cout << "Installing curl..." << std::endl;
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "export DEBIAN_FRONTEND=noninteractive && "
-            "apt-get update -y && "
-            "apt-get install -y curl",
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote(
+        "export DEBIAN_FRONTEND=noninteractive && "
+        "apt-get update -y && "
+        "apt-get install -y curl",
+        output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
 
-
-    return commandExists(
-        "curl"
-    );
+    return commandExists("curl");
 }
-
 
 bool SSHKeyGuard::installAuditd()
 {
-    if (
-        commandExists(
-            "auditctl"
-        )
-        )
+    if (commandExists("auditctl"))
     {
-        std::cout
-            << "auditd is already installed."
-            << std::endl;
+        std::cout << "auditd is already installed." << std::endl;
 
         return true;
     }
 
+    std::cout << "auditd was not found." << std::endl;
 
-    std::cout
-        << "auditd was not found."
-        << std::endl;
-
-
-    std::cout
-        << "Installing auditd..."
-        << std::endl;
-
+    std::cout << "Installing auditd..." << std::endl;
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "export DEBIAN_FRONTEND=noninteractive && "
-            "apt-get update -y && "
-            "apt-get install -y auditd audispd-plugins",
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote(
+        "export DEBIAN_FRONTEND=noninteractive && "
+        "apt-get update -y && "
+        "apt-get install -y auditd audispd-plugins",
+        output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
 
+    output.clear();
+
+    exitCode = -1;
+
+    executeRemote("systemctl enable auditd", output, exitCode);
 
     output.clear();
 
     exitCode = -1;
 
+    executeRemote("systemctl start auditd", output, exitCode);
 
-    executeRemote(
-        "systemctl enable auditd",
-        output,
-        exitCode
-    );
-
-
-    output.clear();
-
-    exitCode = -1;
-
-
-    executeRemote(
-        "systemctl start auditd",
-        output,
-        exitCode
-    );
-
-
-    return commandExists(
-        "auditctl"
-    );
+    return commandExists("auditctl");
 }
 
-
-bool SSHKeyGuard::downloadScript(
-    const std::string& url,
-    const std::string& destination
-)
+bool SSHKeyGuard::downloadScript(const std::string& url, const std::string& destination)
 {
-    std::cout
-        << "Downloading SSH Key Guard..."
-        << std::endl;
-
+    std::cout << "Downloading SSH Key Guard..." << std::endl;
 
     std::string output;
 
     int exitCode = -1;
-
 
     std::string command =
         "curl -fL "
@@ -763,235 +437,120 @@ bool SSHKeyGuard::downloadScript(
         "--retry 3 "
         "--silent "
         "--show-error "
-        + shellQuote(url)
-        + " -o "
-        + shellQuote(destination);
+        + shellQuote(url) + " -o " + shellQuote(destination);
 
-
-    if (
-        !executeRemote(
-            command,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote(command, output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
-
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "test -s "
-            + shellQuote(
-                destination
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("test -s " + shellQuote(destination), output, exitCode))
     {
-        std::cout
-            << "Downloaded file is empty."
-            << std::endl;
+        std::cout << "Downloaded file is empty." << std::endl;
 
         return false;
     }
 
-
     return true;
 }
 
-
-bool SSHKeyGuard::validatePythonScript(
-    const std::string& path
-)
+bool SSHKeyGuard::validatePythonScript(const std::string& path)
 {
-    std::cout
-        << "Checking Python syntax..."
-        << std::endl;
-
+    std::cout << "Checking Python syntax..." << std::endl;
 
     std::string output;
 
     int exitCode = -1;
 
+    std::string command = "python3 -m py_compile " + shellQuote(path);
 
-    std::string command =
-        "python3 -m py_compile "
-        + shellQuote(path);
-
-
-    if (
-        executeRemote(
-            command,
-            output,
-            exitCode
-        )
-        )
+    if (executeRemote(command, output, exitCode))
     {
         return true;
     }
 
+    std::cout << "Python syntax validation failed:" << std::endl;
 
-    std::cout
-        << "Python syntax validation failed:"
-        << std::endl;
-
-
-    printCommandOutput(
-        output
-    );
-
+    printCommandOutput(output);
 
     return false;
 }
 
-
 bool SSHKeyGuard::writeServiceFile()
 {
-    std::cout
-        << "Creating systemd service..."
-        << std::endl;
+    std::cout << "Creating systemd service..." << std::endl;
 
-
-    const std::string encoded =
-        base64Encode(
-            SSHKEY_SERVICE_CONTENT
-        );
-
+    const std::string encoded = base64Encode(SSHKEY_SERVICE_CONTENT);
 
     std::string output;
 
     int exitCode = -1;
 
-
     std::string command =
-        "echo "
-        + shellQuote(encoded)
-        + " | base64 -d > "
-        + shellQuote(
-            SSHKEY_SERVICE_PATH
-        );
+        "echo " + shellQuote(encoded) + " | base64 -d > " + shellQuote(SSHKEY_SERVICE_PATH);
 
-
-    if (
-        !executeRemote(
-            command,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote(command, output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
-
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "chmod 644 "
-            + shellQuote(
-                SSHKEY_SERVICE_PATH
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("chmod 644 " + shellQuote(SSHKEY_SERVICE_PATH), output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
 
-
     return true;
 }
-
 
 bool SSHKeyGuard::reloadSystemd()
 {
-    std::cout
-        << "Reloading systemd..."
-        << std::endl;
-
+    std::cout << "Reloading systemd..." << std::endl;
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl daemon-reload",
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl daemon-reload", output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
 
-
     return true;
 }
-
 
 bool SSHKeyGuard::enableService()
 {
-    std::cout
-        << "Enabling SSH Key Guard service..."
-        << std::endl;
-
+    std::cout << "Enabling SSH Key Guard service..." << std::endl;
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl enable "
-            + SSHKEY_SERVICE,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl enable " + SSHKEY_SERVICE, output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
 
-
     return true;
 }
-
 
 bool SSHKeyGuard::removeServiceFile()
 {
@@ -999,80 +558,37 @@ bool SSHKeyGuard::removeServiceFile()
 
     int exitCode = -1;
 
-
-    return executeRemote(
-        "rm -f "
-        + shellQuote(
-            SSHKEY_SERVICE_PATH
-        ),
-        output,
-        exitCode
-    );
+    return executeRemote("rm -f " + shellQuote(SSHKEY_SERVICE_PATH), output, exitCode);
 }
-
 
 bool SSHKeyGuard::backupCurrentScript()
 {
-    std::cout
-        << "Creating backup..."
-        << std::endl;
-
+    std::cout << "Creating backup..." << std::endl;
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "mkdir -p "
-            + shellQuote(
-                SSHKEY_BACKUP_DIR
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("mkdir -p " + shellQuote(SSHKEY_BACKUP_DIR), output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
-
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "cp "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            )
-            + " "
-            + shellQuote(
-                SSHKEY_BACKUP_SCRIPT
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("cp " + shellQuote(SSHKEY_SCRIPT) + " " + shellQuote(SSHKEY_BACKUP_SCRIPT), output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
 
-
     return true;
 }
-
 
 bool SSHKeyGuard::restoreBackup()
 {
@@ -1080,1975 +596,967 @@ bool SSHKeyGuard::restoreBackup()
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "test -f "
-            + shellQuote(
-                SSHKEY_BACKUP_SCRIPT
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("test -f " + shellQuote(SSHKEY_BACKUP_SCRIPT), output, exitCode))
     {
         return false;
     }
-
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "cp "
-            + shellQuote(
-                SSHKEY_BACKUP_SCRIPT
-            )
-            + " "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("cp " + shellQuote(SSHKEY_BACKUP_SCRIPT) + " " + shellQuote(SSHKEY_SCRIPT), output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return false;
     }
-
 
     output.clear();
 
     exitCode = -1;
 
-
-    executeRemote(
-        "chmod 700 "
-        + shellQuote(
-            SSHKEY_SCRIPT
-        ),
-        output,
-        exitCode
-    );
-
+    executeRemote("chmod 700 " + shellQuote(SSHKEY_SCRIPT), output, exitCode);
 
     return true;
 }
 
-
-void SSHKeyGuard::printCommandOutput(
-    const std::string& output
-)
+void SSHKeyGuard::printCommandOutput(const std::string& output)
 {
-    if (
-        output.empty()
-        )
+    if (output.empty())
     {
         return;
     }
 
+    std::cout << output;
 
-    std::cout
-        << output;
-
-
-    if (
-        output.back() != '\n'
-        )
+    if (output.back() != '\n')
     {
-        std::cout
-            << std::endl;
+        std::cout << std::endl;
     }
 }
-
 
 void SSHKeyGuard::installGuard()
 {
     printSeparator();
 
-
-    std::cout
-        << "        INSTALL SSH KEY GUARD"
-        << std::endl;
-
+    std::cout << "        INSTALL SSH KEY GUARD" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !checkRootAccess()
-        )
+    if (!checkRootAccess())
     {
-        std::cout
-            << "Root access is required."
-            << std::endl;
+        std::cout << "Root access is required." << std::endl;
 
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !installPython()
-        )
+    if (!installPython())
     {
-        std::cout
-            << "Failed to install Python3."
-            << std::endl;
+        std::cout << "Failed to install Python3." << std::endl;
 
         return;
     }
 
-
-    if (
-        !commandExists(
-            "systemctl"
-        )
-        )
+    if (!commandExists("systemctl"))
     {
-        std::cout
-            << "systemctl was not found."
-            << std::endl;
+        std::cout << "systemctl was not found." << std::endl;
 
         return;
     }
 
-
-    if (
-        !installCurl()
-        )
+    if (!installCurl())
     {
-        std::cout
-            << "Failed to install curl."
-            << std::endl;
+        std::cout << "Failed to install curl." << std::endl;
 
         return;
     }
 
+    std::cout << std::endl << "Checking auditd..." << std::endl;
 
-    std::cout
-        << std::endl
-        << "Checking auditd..."
-        << std::endl;
-
-
-    if (
-        !installAuditd()
-        )
+    if (!installAuditd())
     {
-        std::cout
-            << "Warning: auditd could not be installed."
-            << std::endl;
+        std::cout << "Warning: auditd could not be installed." << std::endl;
 
-        std::cout
-            << "SSH Key Guard will continue using "
-            "filesystem monitoring."
-            << std::endl;
+        std::cout << "SSH Key Guard will continue using filesystem monitoring." << std::endl;
     }
 
-
-    std::cout
-        << "Creating directories..."
-        << std::endl;
-
+    std::cout << "Creating directories..." << std::endl;
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "mkdir -p "
-            + shellQuote(
-                SSHKEY_DATA_DIR
-            )
-            + " "
-            + shellQuote(
-                SSHKEY_BACKUP_DIR
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("mkdir -p " + shellQuote(SSHKEY_DATA_DIR) + " " + shellQuote(SSHKEY_BACKUP_DIR), output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return;
     }
 
-
-    if (
-        !downloadScript(
-            SSHKEY_UPDATE_URL,
-            SSHKEY_TEMP_SCRIPT
-        )
-        )
+    if (!downloadScript(SSHKEY_UPDATE_URL, SSHKEY_TEMP_SCRIPT))
     {
-        std::cout
-            << "Failed to download SSH Key Guard."
-            << std::endl;
+        std::cout << "Failed to download SSH Key Guard." << std::endl;
 
         return;
     }
 
-
-    if (
-        !validatePythonScript(
-            SSHKEY_TEMP_SCRIPT
-        )
-        )
+    if (!validatePythonScript(SSHKEY_TEMP_SCRIPT))
     {
-        executeRemote(
-            "rm -f "
-            + shellQuote(
-                SSHKEY_TEMP_SCRIPT
-            ),
-            output,
-            exitCode
-        );
+        executeRemote("rm -f " + shellQuote(SSHKEY_TEMP_SCRIPT), output, exitCode);
 
         return;
     }
 
-
-    if (
-        scriptExists()
-        )
+    if (scriptExists())
     {
-        std::cout
-            << "Existing SSH Key Guard found."
-            << std::endl;
+        std::cout << "Existing SSH Key Guard found." << std::endl;
 
-
-        if (
-            !backupCurrentScript()
-            )
+        if (!backupCurrentScript())
         {
-            std::cout
-                << "Warning: backup could not be created."
-                << std::endl;
+            std::cout << "Warning: backup could not be created." << std::endl;
         }
     }
 
-
-    std::cout
-        << "Installing SSH Key Guard script..."
-        << std::endl;
-
+    std::cout << "Installing SSH Key Guard script..." << std::endl;
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "mv "
-            + shellQuote(
-                SSHKEY_TEMP_SCRIPT
-            )
-            + " "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("mv " + shellQuote(SSHKEY_TEMP_SCRIPT) + " " + shellQuote(SSHKEY_SCRIPT), output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return;
     }
-
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "chmod 700 "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("chmod 700 " + shellQuote(SSHKEY_SCRIPT), output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return;
     }
 
-
-    std::cout
-        << "Creating SSH key baseline..."
-        << std::endl;
-
+    std::cout << "Creating SSH key baseline..." << std::endl;
 
     output.clear();
 
     exitCode = -1;
 
+    executeRemote("python3 " + shellQuote(SSHKEY_SCRIPT) + " init", output, exitCode);
 
-    executeRemote(
-        "python3 "
-        + shellQuote(
-            SSHKEY_SCRIPT
-        )
-        + " init",
-        output,
-        exitCode
-    );
+    printCommandOutput(output);
 
-
-    printCommandOutput(
-        output
-    );
-
-
-    if (
-        !writeServiceFile()
-        )
+    if (!writeServiceFile())
     {
-        std::cout
-            << "Failed to create systemd service."
-            << std::endl;
+        std::cout << "Failed to create systemd service." << std::endl;
 
         return;
     }
 
-
-    if (
-        !reloadSystemd()
-        )
+    if (!reloadSystemd())
     {
         return;
     }
 
-
-    if (
-        !enableService()
-        )
+    if (!enableService())
     {
         return;
     }
 
-
-    std::cout
-        << "Starting SSH Key Guard..."
-        << std::endl;
-
+    std::cout << "Starting SSH Key Guard..." << std::endl;
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl restart "
-            + SSHKEY_SERVICE,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl restart " + SSHKEY_SERVICE, output, exitCode))
     {
-        std::cout
-            << "Failed to start SSH Key Guard."
-            << std::endl;
+        std::cout << "Failed to start SSH Key Guard." << std::endl;
 
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return;
     }
 
+    std::cout << "Checking service..." << std::endl;
 
-    std::cout
-        << "Checking service..."
-        << std::endl;
-
-
-    if (
-        !isServiceActive()
-        )
+    if (!isServiceActive())
     {
-        std::cout
-            << std::endl
-            << "SSH Key Guard failed to start."
-            << std::endl;
-
+        std::cout << std::endl << "SSH Key Guard failed to start." << std::endl;
 
         output.clear();
 
         exitCode = -1;
 
+        executeRemote("systemctl status " + SSHKEY_SERVICE + " --no-pager", output, exitCode);
 
-        executeRemote(
-            "systemctl status "
-            + SSHKEY_SERVICE
-            + " --no-pager",
-            output,
-            exitCode
-        );
+        printCommandOutput(output);
 
-
-        printCommandOutput(
-            output
-        );
-
-
-        std::cout
-            << std::endl
-            << "Recent logs:"
-            << std::endl;
-
+        std::cout << std::endl << "Recent logs:" << std::endl;
 
         output.clear();
 
         exitCode = -1;
 
+        executeRemote("journalctl -u " + SSHKEY_SERVICE + " -n 30 --no-pager", output, exitCode);
 
-        executeRemote(
-            "journalctl -u "
-            + SSHKEY_SERVICE
-            + " -n 30 --no-pager",
-            output,
-            exitCode
-        );
-
-
-        printCommandOutput(
-            output
-        );
-
+        printCommandOutput(output);
 
         return;
     }
-
 
     printSeparator();
 
+    std::cout << "SSH Key Guard installed successfully." << std::endl;
 
-    std::cout
-        << "SSH Key Guard installed successfully."
-        << std::endl;
+    std::cout << "Service: ACTIVE" << std::endl;
 
+    std::cout << "Enabled: " << (isServiceEnabled() ? "YES" : "NO") << std::endl;
 
-    std::cout
-        << "Service: ACTIVE"
-        << std::endl;
+    std::cout << "Script: EXISTS" << std::endl;
 
-
-    std::cout
-        << "Enabled: "
-        << (
-            isServiceEnabled()
-            ? "YES"
-            : "NO"
-            )
-        << std::endl;
-
-
-    std::cout
-        << "Script: EXISTS"
-        << std::endl;
-
-
-    std::cout
-        << "Auditd: "
-        << (
-            commandExists("auditctl")
-            ? "AVAILABLE"
-            : "NOT AVAILABLE"
-            )
-        << std::endl;
-
+    std::cout << "Auditd: " << (commandExists("auditctl") ? "AVAILABLE" : "NOT AVAILABLE") << std::endl;
 
     printSeparator();
 }
-
 
 void SSHKeyGuard::removeGuard()
 {
     printSeparator();
 
-
-    std::cout
-        << "          REMOVE SSH KEY GUARD"
-        << std::endl;
-
+    std::cout << "          REMOVE SSH KEY GUARD" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !checkRootAccess()
-        )
+    if (!checkRootAccess())
     {
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
+    std::cout << "Stopping service..." << std::endl;
 
-    std::cout
-        << "Stopping service..."
-        << std::endl;
-
-
-    executeRemote(
-        "systemctl stop "
-        + SSHKEY_SERVICE,
-        output,
-        exitCode
-    );
-
+    executeRemote("systemctl stop " + SSHKEY_SERVICE, output, exitCode);
 
     output.clear();
 
     exitCode = -1;
 
+    executeRemote("systemctl disable " + SSHKEY_SERVICE, output, exitCode);
 
-    executeRemote(
-        "systemctl disable "
-        + SSHKEY_SERVICE,
-        output,
-        exitCode
-    );
+    std::cout << "Removing systemd service..." << std::endl;
 
-
-    std::cout
-        << "Removing systemd service..."
-        << std::endl;
-
-
-    if (
-        !removeServiceFile()
-        )
+    if (!removeServiceFile())
     {
-        std::cout
-            << "Failed to remove service file."
-            << std::endl;
+        std::cout << "Failed to remove service file." << std::endl;
 
         return;
     }
 
-
-    if (
-        !reloadSystemd()
-        )
+    if (!reloadSystemd())
     {
         return;
     }
 
-
-    std::cout
-        << "Removing SSH Key Guard script..."
-        << std::endl;
-
+    std::cout << "Removing SSH Key Guard script..." << std::endl;
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "rm -f "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            )
-            + " "
-            + shellQuote(
-                SSHKEY_TEMP_SCRIPT
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("rm -f " + shellQuote(SSHKEY_SCRIPT) + " " + shellQuote(SSHKEY_TEMP_SCRIPT), output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return;
     }
 
-
-    std::cout
-        << "Removing ServerGuard audit rules..."
-        << std::endl;
-
+    std::cout << "Removing ServerGuard audit rules..." << std::endl;
 
     output.clear();
 
     exitCode = -1;
 
-
-    executeRemote(
-        "rm -f "
-        + shellQuote(
-            SSHKEY_AUDIT_RULE
-        ),
-        output,
-        exitCode
-    );
-
+    executeRemote("rm -f " + shellQuote(SSHKEY_AUDIT_RULE), output, exitCode);
 
     output.clear();
 
     exitCode = -1;
-
 
     executeRemote(
         "command -v augenrules >/dev/null 2>&1 && "
         "augenrules --load >/dev/null 2>&1 || true",
-        output,
-        exitCode
-    );
-
+        output, exitCode);
 
     printSeparator();
 
+    std::cout << "SSH Key Guard removed." << std::endl;
 
-    std::cout
-        << "SSH Key Guard removed."
-        << std::endl;
+    std::cout << "Monitoring data was preserved:" << std::endl;
 
+    std::cout << SSHKEY_DATA_DIR << std::endl;
 
-    std::cout
-        << "Monitoring data was preserved:"
-        << std::endl;
+    std::cout << "Backups were preserved:" << std::endl;
 
-
-    std::cout
-        << SSHKEY_DATA_DIR
-        << std::endl;
-
-
-    std::cout
-        << "Backups were preserved:"
-        << std::endl;
-
-
-    std::cout
-        << SSHKEY_BACKUP_DIR
-        << std::endl;
-
+    std::cout << SSHKEY_BACKUP_DIR << std::endl;
 
     printSeparator();
 }
-
 
 void SSHKeyGuard::startGuard()
 {
     printSeparator();
 
-
-    std::cout
-        << "          START SSH KEY GUARD"
-        << std::endl;
-
+    std::cout << "          START SSH KEY GUARD" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !checkRootAccess()
-        )
+    if (!checkRootAccess())
     {
         return;
     }
 
-
-    if (
-        !serviceExists()
-        )
+    if (!serviceExists())
     {
-        std::cout
-            << "SSH Key Guard is not installed."
-            << std::endl;
+        std::cout << "SSH Key Guard is not installed." << std::endl;
 
-
-        std::cout
-            << "Install it first."
-            << std::endl;
-
+        std::cout << "Install it first." << std::endl;
 
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl start "
-            + SSHKEY_SERVICE,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl start " + SSHKEY_SERVICE, output, exitCode))
     {
-        std::cout
-            << "Failed to start SSH Key Guard."
-            << std::endl;
+        std::cout << "Failed to start SSH Key Guard." << std::endl;
 
-
-        printCommandOutput(
-            output
-        );
-
+        printCommandOutput(output);
 
         return;
     }
 
-
-    if (
-        isServiceActive()
-        )
+    if (isServiceActive())
     {
-        std::cout
-            << "SSH Key Guard started successfully."
-            << std::endl;
+        std::cout << "SSH Key Guard started successfully." << std::endl;
 
-
-        std::cout
-            << "Service: ACTIVE"
-            << std::endl;
+        std::cout << "Service: ACTIVE" << std::endl;
     }
     else
     {
-        std::cout
-            << "SSH Key Guard did not become active."
-            << std::endl;
+        std::cout << "SSH Key Guard did not become active." << std::endl;
     }
 }
-
 
 void SSHKeyGuard::stopGuard()
 {
     printSeparator();
 
-
-    std::cout
-        << "           STOP SSH KEY GUARD"
-        << std::endl;
-
+    std::cout << "           STOP SSH KEY GUARD" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !checkRootAccess()
-        )
+    if (!checkRootAccess())
     {
         return;
     }
 
-
-    if (
-        !serviceExists()
-        )
+    if (!serviceExists())
     {
-        std::cout
-            << "SSH Key Guard is not installed."
-            << std::endl;
+        std::cout << "SSH Key Guard is not installed." << std::endl;
 
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl stop "
-            + SSHKEY_SERVICE,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl stop " + SSHKEY_SERVICE, output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return;
     }
 
-
-    std::cout
-        << "SSH Key Guard stopped."
-        << std::endl;
+    std::cout << "SSH Key Guard stopped." << std::endl;
 }
-
 
 void SSHKeyGuard::restartGuard()
 {
     printSeparator();
 
-
-    std::cout
-        << "         RESTART SSH KEY GUARD"
-        << std::endl;
-
+    std::cout << "         RESTART SSH KEY GUARD" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !checkRootAccess()
-        )
+    if (!checkRootAccess())
     {
         return;
     }
 
-
-    if (
-        !serviceExists()
-        )
+    if (!serviceExists())
     {
-        std::cout
-            << "SSH Key Guard is not installed."
-            << std::endl;
+        std::cout << "SSH Key Guard is not installed." << std::endl;
 
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl restart "
-            + SSHKEY_SERVICE,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl restart " + SSHKEY_SERVICE, output, exitCode))
     {
-        std::cout
-            << "Failed to restart SSH Key Guard."
-            << std::endl;
+        std::cout << "Failed to restart SSH Key Guard." << std::endl;
 
-
-        printCommandOutput(
-            output
-        );
-
+        printCommandOutput(output);
 
         return;
     }
 
-
-    if (
-        isServiceActive()
-        )
+    if (isServiceActive())
     {
-        std::cout
-            << "SSH Key Guard restarted successfully."
-            << std::endl;
+        std::cout << "SSH Key Guard restarted successfully." << std::endl;
 
-
-        std::cout
-            << "Service: ACTIVE"
-            << std::endl;
+        std::cout << "Service: ACTIVE" << std::endl;
     }
     else
     {
-        std::cout
-            << "SSH Key Guard failed to become active."
-            << std::endl;
-
+        std::cout << "SSH Key Guard failed to become active." << std::endl;
 
         output.clear();
 
         exitCode = -1;
 
+        executeRemote("journalctl -u " + SSHKEY_SERVICE + " -n 30 --no-pager", output, exitCode);
 
-        executeRemote(
-            "journalctl -u "
-            + SSHKEY_SERVICE
-            + " -n 30 --no-pager",
-            output,
-            exitCode
-        );
-
-
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
     }
 }
-
 
 void SSHKeyGuard::showStatus()
 {
     printSeparator();
 
-
-    std::cout
-        << "          SSH KEY GUARD STATUS"
-        << std::endl;
-
+    std::cout << "          SSH KEY GUARD STATUS" << std::endl;
 
     printSeparator();
 
+    bool installed = serviceExists();
 
-    bool installed =
-        serviceExists();
+    bool script = scriptExists();
 
+    bool audit = commandExists("auditctl");
 
-    bool script =
-        scriptExists();
+    std::cout << "Service: " << (installed ? "INSTALLED" : "NOT INSTALLED") << std::endl;
 
+    std::cout << "Script: " << (script ? "EXISTS" : "NOT FOUND") << std::endl;
 
-    bool audit =
-        commandExists(
-            "auditctl"
-        );
+    std::cout << "Auditd: " << (audit ? "AVAILABLE" : "NOT AVAILABLE") << std::endl;
 
-
-    std::cout
-        << "Service: "
-        << (
-            installed
-            ? "INSTALLED"
-            : "NOT INSTALLED"
-            )
-        << std::endl;
-
-
-    std::cout
-        << "Script: "
-        << (
-            script
-            ? "EXISTS"
-            : "NOT FOUND"
-            )
-        << std::endl;
-
-
-    std::cout
-        << "Auditd: "
-        << (
-            audit
-            ? "AVAILABLE"
-            : "NOT AVAILABLE"
-            )
-        << std::endl;
-
-
-    if (
-        installed
-        )
+    if (installed)
     {
-        std::cout
-            << "State: "
-            << (
-                isServiceActive()
-                ? "ACTIVE"
-                : "INACTIVE"
-                )
-            << std::endl;
+        std::cout << "State: " << (isServiceActive() ? "ACTIVE" : "INACTIVE") << std::endl;
 
-
-        std::cout
-            << "Enabled: "
-            << (
-                isServiceEnabled()
-                ? "YES"
-                : "NO"
-                )
-            << std::endl;
+        std::cout << "Enabled: " << (isServiceEnabled() ? "YES" : "NO") << std::endl;
     }
 
+    std::cout << "Script path: " << SSHKEY_SCRIPT << std::endl;
 
-    std::cout
-        << "Script path: "
-        << SSHKEY_SCRIPT
-        << std::endl;
+    std::cout << "Events: " << SSHKEY_EVENTS_FILE << std::endl;
 
-
-    std::cout
-        << "Events: "
-        << SSHKEY_EVENTS_FILE
-        << std::endl;
-
-
-    std::cout
-        << "State: "
-        << SSHKEY_STATE_FILE
-        << std::endl;
-
+    std::cout << "State: " << SSHKEY_STATE_FILE << std::endl;
 
     printSeparator();
 
-
-    if (
-        installed
-        &&
-        !isServiceActive()
-        )
+    if (installed && !isServiceActive())
     {
-        std::cout
-            << std::endl
-            << "Recent service logs:"
-            << std::endl;
-
+        std::cout << std::endl << "Recent service logs:" << std::endl;
 
         std::string output;
 
         int exitCode = -1;
 
+        executeRemote("journalctl -u " + SSHKEY_SERVICE + " -n 30 --no-pager", output, exitCode);
 
-        executeRemote(
-            "journalctl -u "
-            + SSHKEY_SERVICE
-            + " -n 30 --no-pager",
-            output,
-            exitCode
-        );
-
-
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
     }
 }
-
 
 void SSHKeyGuard::initializeBaseline()
 {
     printSeparator();
 
-
-    std::cout
-        << "       CREATE SSH KEY BASELINE"
-        << std::endl;
-
+    std::cout << "       CREATE SSH KEY BASELINE" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !scriptExists()
-        )
+    if (!scriptExists())
     {
-        std::cout
-            << "SSH Key Guard is not installed."
-            << std::endl;
+        std::cout << "SSH Key Guard is not installed." << std::endl;
 
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "python3 "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            )
-            + " init",
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("python3 " + shellQuote(SSHKEY_SCRIPT) + " init", output, exitCode))
     {
-        std::cout
-            << "Failed to create baseline."
-            << std::endl;
+        std::cout << "Failed to create baseline." << std::endl;
 
-
-        printCommandOutput(
-            output
-        );
-
+        printCommandOutput(output);
 
         return;
     }
 
-
-    printCommandOutput(
-        output
-    );
+    printCommandOutput(output);
 }
-
 
 void SSHKeyGuard::scanNow()
 {
     printSeparator();
 
-
-    std::cout
-        << "          SCAN SSH KEYS"
-        << std::endl;
-
+    std::cout << "          SCAN SSH KEYS" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !scriptExists()
-        )
+    if (!scriptExists())
     {
-        std::cout
-            << "SSH Key Guard is not installed."
-            << std::endl;
+        std::cout << "SSH Key Guard is not installed." << std::endl;
 
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "python3 "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            )
-            + " scan",
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("python3 " + shellQuote(SSHKEY_SCRIPT) + " scan", output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return;
     }
 
-
-    printCommandOutput(
-        output
-    );
+    printCommandOutput(output);
 }
-
 
 void SSHKeyGuard::showEvents()
 {
     printSeparator();
 
-
-    std::cout
-        << "          SSH KEY EVENTS"
-        << std::endl;
-
+    std::cout << "          SSH KEY EVENTS" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !scriptExists()
-        )
+    if (!scriptExists())
     {
-        std::cout
-            << "SSH Key Guard is not installed."
-            << std::endl;
+        std::cout << "SSH Key Guard is not installed." << std::endl;
 
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "python3 "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            )
-            + " events 50",
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("python3 " + shellQuote(SSHKEY_SCRIPT) + " events 50", output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return;
     }
 
-
-    printCommandOutput(
-        output
-    );
+    printCommandOutput(output);
 }
-
 
 void SSHKeyGuard::showLogs()
 {
     printSeparator();
 
-
-    std::cout
-        << "        SSH KEY GUARD SERVICE LOGS"
-        << std::endl;
-
+    std::cout << "        SSH KEY GUARD SERVICE LOGS" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !serviceExists()
-        )
+    if (!serviceExists())
     {
-        std::cout
-            << "Service is not installed."
-            << std::endl;
+        std::cout << "Service is not installed." << std::endl;
 
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
+    executeRemote("journalctl -u " + SSHKEY_SERVICE + " -n 100 --no-pager", output, exitCode);
 
-    executeRemote(
-        "journalctl -u "
-        + SSHKEY_SERVICE
-        + " -n 100 --no-pager",
-        output,
-        exitCode
-    );
-
-
-    printCommandOutput(
-        output
-    );
+    printCommandOutput(output);
 }
-
 
 void SSHKeyGuard::installAudit()
 {
     printSeparator();
 
-
-    std::cout
-        << "          INSTALL AUDIT SUPPORT"
-        << std::endl;
-
+    std::cout << "          INSTALL AUDIT SUPPORT" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !checkRootAccess()
-        )
+    if (!checkRootAccess())
     {
         return;
     }
 
-
-    if (
-        !installAuditd()
-        )
+    if (!installAuditd())
     {
-        std::cout
-            << "Failed to install auditd."
-            << std::endl;
+        std::cout << "Failed to install auditd." << std::endl;
 
         return;
     }
 
-
-    if (
-        !scriptExists()
-        )
+    if (!scriptExists())
     {
-        std::cout
-            << "SSH Key Guard script is not installed."
-            << std::endl;
+        std::cout << "SSH Key Guard script is not installed." << std::endl;
 
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        executeRemote(
-            "python3 "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            )
-            + " audit",
-            output,
-            exitCode
-        )
-        )
+    if (executeRemote("python3 " + shellQuote(SSHKEY_SCRIPT) + " audit", output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
     }
     else
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
-
-        std::cout
-            << "Audit rule setup reported an error."
-            << std::endl;
+        std::cout << "Audit rule setup reported an error." << std::endl;
     }
-
 
     output.clear();
 
     exitCode = -1;
 
-
-    executeRemote(
-        "auditctl -s",
-        output,
-        exitCode
-    );
-
+    executeRemote("auditctl -s", output, exitCode);
 
     printSeparator();
 
+    std::cout << "Audit status:" << std::endl;
 
-    std::cout
-        << "Audit status:"
-        << std::endl;
-
-
-    printCommandOutput(
-        output
-    );
-
+    printCommandOutput(output);
 
     printSeparator();
 }
-
 
 void SSHKeyGuard::updateGuard()
 {
     printSeparator();
 
-
-    std::cout
-        << "          UPDATE SSH KEY GUARD"
-        << std::endl;
-
+    std::cout << "          UPDATE SSH KEY GUARD" << std::endl;
 
     printSeparator();
 
-
-    if (
-        !checkRootAccess()
-        )
+    if (!checkRootAccess())
     {
         return;
     }
 
-
-    if (
-        !scriptExists()
-        )
+    if (!scriptExists())
     {
-        std::cout
-            << "SSH Key Guard is not installed."
-            << std::endl;
+        std::cout << "SSH Key Guard is not installed." << std::endl;
 
-
-        std::cout
-            << "Install it first."
-            << std::endl;
-
+        std::cout << "Install it first." << std::endl;
 
         return;
     }
 
-
-    if (
-        !installCurl()
-        )
+    if (!installCurl())
     {
-        std::cout
-            << "curl is required."
-            << std::endl;
+        std::cout << "curl is required." << std::endl;
 
         return;
     }
-
 
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !downloadScript(
-            SSHKEY_UPDATE_URL,
-            SSHKEY_TEMP_SCRIPT
-        )
-        )
+    if (!downloadScript(SSHKEY_UPDATE_URL, SSHKEY_TEMP_SCRIPT))
     {
-        std::cout
-            << "Failed to download update."
-            << std::endl;
+        std::cout << "Failed to download update." << std::endl;
 
         return;
     }
 
-
-    if (
-        !validatePythonScript(
-            SSHKEY_TEMP_SCRIPT
-        )
-        )
+    if (!validatePythonScript(SSHKEY_TEMP_SCRIPT))
     {
-        executeRemote(
-            "rm -f "
-            + shellQuote(
-                SSHKEY_TEMP_SCRIPT
-            ),
-            output,
-            exitCode
-        );
+        executeRemote("rm -f " + shellQuote(SSHKEY_TEMP_SCRIPT), output, exitCode);
 
-
-        std::cout
-            << "Update cancelled."
-            << std::endl;
-
+        std::cout << "Update cancelled." << std::endl;
 
         return;
     }
 
-
-    if (
-        !backupCurrentScript()
-        )
+    if (!backupCurrentScript())
     {
-        std::cout
-            << "Failed to create backup."
-            << std::endl;
+        std::cout << "Failed to create backup." << std::endl;
 
-
-        executeRemote(
-            "rm -f "
-            + shellQuote(
-                SSHKEY_TEMP_SCRIPT
-            ),
-            output,
-            exitCode
-        );
-
+        executeRemote("rm -f " + shellQuote(SSHKEY_TEMP_SCRIPT), output, exitCode);
 
         return;
     }
 
-
-    std::cout
-        << "Installing update..."
-        << std::endl;
-
+    std::cout << "Installing update..." << std::endl;
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "mv "
-            + shellQuote(
-                SSHKEY_TEMP_SCRIPT
-            )
-            + " "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            ),
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("mv " + shellQuote(SSHKEY_TEMP_SCRIPT) + " " + shellQuote(SSHKEY_SCRIPT), output, exitCode))
     {
-        printCommandOutput(
-            output
-        );
+        printCommandOutput(output);
 
         return;
     }
-
 
     output.clear();
 
     exitCode = -1;
 
+    executeRemote("chmod 700 " + shellQuote(SSHKEY_SCRIPT), output, exitCode);
 
-    executeRemote(
-        "chmod 700 "
-        + shellQuote(
-            SSHKEY_SCRIPT
-        ),
-        output,
-        exitCode
-    );
-
-
-    if (
-        serviceExists()
-        )
+    if (serviceExists())
     {
-        std::cout
-            << "Restarting SSH Key Guard..."
-            << std::endl;
-
+        std::cout << "Restarting SSH Key Guard..." << std::endl;
 
         output.clear();
 
         exitCode = -1;
 
-
-        if (
-            !executeRemote(
-                "systemctl restart "
-                + SSHKEY_SERVICE,
-                output,
-                exitCode
-            )
-            )
+        if (!executeRemote("systemctl restart " + SSHKEY_SERVICE, output, exitCode))
         {
-            std::cout
-                << "Updated SSH Key Guard failed to start."
-                << std::endl;
+            std::cout << "Updated SSH Key Guard failed to start." << std::endl;
 
+            printCommandOutput(output);
 
-            printCommandOutput(
-                output
-            );
+            std::cout << "Restoring previous version..." << std::endl;
 
-
-            std::cout
-                << "Restoring previous version..."
-                << std::endl;
-
-
-            if (
-                restoreBackup()
-                )
+            if (restoreBackup())
             {
                 output.clear();
 
                 exitCode = -1;
 
+                executeRemote("systemctl restart " + SSHKEY_SERVICE, output, exitCode);
 
-                executeRemote(
-                    "systemctl restart "
-                    + SSHKEY_SERVICE,
-                    output,
-                    exitCode
-                );
-
-
-                if (
-                    isServiceActive()
-                    )
+                if (isServiceActive())
                 {
-                    std::cout
-                        << "Previous version restored successfully."
-                        << std::endl;
+                    std::cout << "Previous version restored successfully." << std::endl;
                 }
                 else
                 {
-                    std::cout
-                        << "Previous version was restored, "
-                        "but service is not active."
-                        << std::endl;
+                    std::cout << "Previous version was restored, but service is not active." << std::endl;
                 }
             }
-
 
             return;
         }
 
-
-        if (
-            !isServiceActive()
-            )
+        if (!isServiceActive())
         {
-            std::cout
-                << "Updated SSH Key Guard is not active."
-                << std::endl;
+            std::cout << "Updated SSH Key Guard is not active." << std::endl;
 
+            std::cout << "Restoring previous version..." << std::endl;
 
-            std::cout
-                << "Restoring previous version..."
-                << std::endl;
-
-
-            if (
-                restoreBackup()
-                )
+            if (restoreBackup())
             {
                 output.clear();
 
                 exitCode = -1;
 
+                executeRemote("systemctl restart " + SSHKEY_SERVICE, output, exitCode);
 
-                executeRemote(
-                    "systemctl restart "
-                    + SSHKEY_SERVICE,
-                    output,
-                    exitCode
-                );
-
-
-                if (
-                    isServiceActive()
-                    )
+                if (isServiceActive())
                 {
-                    std::cout
-                        << "Previous version restored successfully."
-                        << std::endl;
+                    std::cout << "Previous version restored successfully." << std::endl;
                 }
             }
-
 
             return;
         }
     }
 
-
     printSeparator();
 
+    std::cout << "SSH Key Guard updated successfully." << std::endl;
 
-    std::cout
-        << "SSH Key Guard updated successfully."
-        << std::endl;
-
-
-    if (
-        serviceExists()
-        )
+    if (serviceExists())
     {
-        std::cout
-            << "Service: ACTIVE"
-            << std::endl;
+        std::cout << "Service: ACTIVE" << std::endl;
     }
-
 
     printSeparator();
 }
-
 
 void SSHKeyGuard::menu()
 {
     while (true)
     {
-        std::cout
-            << std::endl;
-
+        std::cout << std::endl;
 
         printSeparator();
 
-
-        std::cout
-            << "          SERVERGUARD SSH KEY GUARD"
-            << std::endl;
-
+        std::cout << "          SERVERGUARD SSH KEY GUARD" << std::endl;
 
         printSeparator();
 
+        std::cout << "1. Install / enable SSH Key Guard" << std::endl;
 
-        std::cout
-            << "1. Install / enable SSH Key Guard"
-            << std::endl;
+        std::cout << "2. Remove SSH Key Guard" << std::endl;
 
+        std::cout << "3. Start SSH Key Guard" << std::endl;
 
-        std::cout
-            << "2. Remove SSH Key Guard"
-            << std::endl;
+        std::cout << "4. Stop SSH Key Guard" << std::endl;
 
+        std::cout << "5. Restart SSH Key Guard" << std::endl;
 
-        std::cout
-            << "3. Start SSH Key Guard"
-            << std::endl;
+        std::cout << "6. SSH Key Guard status" << std::endl;
 
+        std::cout << "7. Create SSH key baseline" << std::endl;
 
-        std::cout
-            << "4. Stop SSH Key Guard"
-            << std::endl;
+        std::cout << "8. Scan SSH keys now" << std::endl;
 
+        std::cout << "9. SSH key events" << std::endl;
 
-        std::cout
-            << "5. Restart SSH Key Guard"
-            << std::endl;
+        std::cout << "10. Show service logs" << std::endl;
 
+        std::cout << "11. Install / configure auditd" << std::endl;
 
-        std::cout
-            << "6. SSH Key Guard status"
-            << std::endl;
+        std::cout << "12. Update SSH Key Guard" << std::endl;
 
-
-        std::cout
-            << "7. Create SSH key baseline"
-            << std::endl;
-
-
-        std::cout
-            << "8. Scan SSH keys now"
-            << std::endl;
-
-
-        std::cout
-            << "9. SSH key events"
-            << std::endl;
-
-
-        std::cout
-            << "10. Show service logs"
-            << std::endl;
-
-
-        std::cout
-            << "11. Install / configure auditd"
-            << std::endl;
-
-
-        std::cout
-            << "12. Update SSH Key Guard"
-            << std::endl;
-
-
-        std::cout
-            << "0. Back"
-            << std::endl;
-
+        std::cout << "0. Back" << std::endl;
 
         printSeparator();
 
-
-        std::cout
-            << "Select: ";
-
+        std::cout << "Select: ";
 
         int choice;
 
-
-        if (
-            !(std::cin >> choice)
-            )
+        if (!(std::cin >> choice))
         {
             std::cin.clear();
 
+            std::cin.ignore(10000, '\n');
 
-            std::cin.ignore(
-                10000,
-                '\n'
-            );
-
-
-            std::cout
-                << "Invalid selection."
-                << std::endl;
-
+            std::cout << "Invalid selection." << std::endl;
 
             continue;
         }
 
-
         switch (choice)
         {
         case 1:
-
             installGuard();
-
             break;
-
 
         case 2:
-
             removeGuard();
-
             break;
-
 
         case 3:
-
             startGuard();
-
             break;
-
 
         case 4:
-
             stopGuard();
-
             break;
-
 
         case 5:
-
             restartGuard();
-
             break;
-
 
         case 6:
-
             showStatus();
-
             break;
-
 
         case 7:
-
             initializeBaseline();
-
             break;
-
 
         case 8:
-
             scanNow();
-
             break;
-
 
         case 9:
-
             showEvents();
-
             break;
-
 
         case 10:
-
             showLogs();
-
             break;
-
 
         case 11:
-
             installAudit();
-
             break;
-
 
         case 12:
-
             updateGuard();
-
             break;
 
-
         case 0:
-
             return;
 
-
         default:
-
-            std::cout
-                << "Unknown option."
-                << std::endl;
-
+            std::cout << "Unknown option." << std::endl;
             break;
         }
     }
 }
 
-
 bool SSHKeyGuard::webInstall()
 {
     installGuard();
-
 
     if (!serviceExists())
     {
         return false;
     }
 
-
     if (!scriptExists())
     {
         return false;
     }
 
-
-    return
-        isServiceActive()
-        &&
-        isServiceEnabled();
+    return isServiceActive() && isServiceEnabled();
 }
-
 
 bool SSHKeyGuard::webRemove()
 {
     removeGuard();
 
-
-    return
-        !serviceExists()
-        &&
-        !scriptExists();
+    return !serviceExists() && !scriptExists();
 }
-
 
 bool SSHKeyGuard::webStart()
 {
@@ -3057,49 +1565,26 @@ bool SSHKeyGuard::webStart()
         return false;
     }
 
-
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl enable "
-            + SSHKEY_SERVICE,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl enable " + SSHKEY_SERVICE, output, exitCode))
     {
         return false;
     }
-
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl start "
-            + SSHKEY_SERVICE,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl start " + SSHKEY_SERVICE, output, exitCode))
     {
         return false;
     }
 
-
-    return
-        isServiceActive()
-        &&
-        isServiceEnabled();
+    return isServiceActive() && isServiceEnabled();
 }
-
 
 bool SSHKeyGuard::webStop()
 {
@@ -3108,57 +1593,30 @@ bool SSHKeyGuard::webStop()
         return false;
     }
 
-
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl stop "
-            + SSHKEY_SERVICE,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl stop " + SSHKEY_SERVICE, output, exitCode))
     {
         return false;
     }
-
 
     output.clear();
 
     exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl disable "
-            + SSHKEY_SERVICE,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl disable " + SSHKEY_SERVICE, output, exitCode))
     {
         return false;
     }
 
+    bool active = isServiceActive();
 
-    bool active =
-        isServiceActive();
+    bool enabled = isServiceEnabled();
 
-
-    bool enabled =
-        isServiceEnabled();
-
-
-    return
-        !active
-        &&
-        !enabled;
+    return !active && !enabled;
 }
-
 
 bool SSHKeyGuard::webRestart()
 {
@@ -3167,179 +1625,79 @@ bool SSHKeyGuard::webRestart()
         return false;
     }
 
-
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "systemctl restart "
-            + SSHKEY_SERVICE,
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("systemctl restart " + SSHKEY_SERVICE, output, exitCode))
     {
         return false;
     }
 
-
     return isServiceActive();
 }
 
-
 std::string SSHKeyGuard::webStatus()
 {
-    bool installed =
-        serviceExists();
+    bool installed = serviceExists();
 
+    bool script = scriptExists();
 
-    bool script =
-        scriptExists();
-
-
-    bool audit =
-        commandExists(
-            "auditctl"
-        );
-
+    bool audit = commandExists("auditctl");
 
     bool active = false;
 
     bool enabled = false;
 
-
     if (installed)
     {
-        active =
-            isServiceActive();
+        active = isServiceActive();
 
-
-        enabled =
-            isServiceEnabled();
+        enabled = isServiceEnabled();
     }
-
 
     std::string json;
 
-
     json += "{";
 
-
-    json +=
-        "\"installed\":"
-        +
-        std::string(
-            installed
-            ? "true"
-            : "false"
-        );
-
+    json += "\"installed\":" + std::string(installed ? "true" : "false");
 
     json += ",";
 
-
-    json +=
-        "\"script\":"
-        +
-        std::string(
-            script
-            ? "true"
-            : "false"
-        );
-
+    json += "\"script\":" + std::string(script ? "true" : "false");
 
     json += ",";
 
-
-    json +=
-        "\"active\":"
-        +
-        std::string(
-            active
-            ? "true"
-            : "false"
-        );
-
+    json += "\"active\":" + std::string(active ? "true" : "false");
 
     json += ",";
 
-
-    json +=
-        "\"enabled\":"
-        +
-        std::string(
-            enabled
-            ? "true"
-            : "false"
-        );
-
+    json += "\"enabled\":" + std::string(enabled ? "true" : "false");
 
     json += ",";
 
-
-    json +=
-        "\"auditd\":"
-        +
-        std::string(
-            audit
-            ? "true"
-            : "false"
-        );
-
+    json += "\"auditd\":" + std::string(audit ? "true" : "false");
 
     json += ",";
 
-
-    json +=
-        "\"script_path\":\""
-        +
-        SSHKEY_SCRIPT
-        +
-        "\"";
-
+    json += "\"script_path\":\"" + SSHKEY_SCRIPT + "\"";
 
     json += ",";
 
-
-    json +=
-        "\"events_file\":\""
-        +
-        SSHKEY_EVENTS_FILE
-        +
-        "\"";
-
+    json += "\"events_file\":\"" + SSHKEY_EVENTS_FILE + "\"";
 
     json += ",";
 
-
-    json +=
-        "\"state_file\":\""
-        +
-        SSHKEY_STATE_FILE
-        +
-        "\"";
-
+    json += "\"state_file\":\"" + SSHKEY_STATE_FILE + "\"";
 
     json += ",";
 
-
-    json +=
-        "\"service\":\""
-        +
-        SSHKEY_SERVICE
-        +
-        "\"";
-
+    json += "\"service\":\"" + SSHKEY_SERVICE + "\"";
 
     json += "}";
 
-
     return json;
 }
-
 
 bool SSHKeyGuard::webBaseline()
 {
@@ -3348,23 +1706,12 @@ bool SSHKeyGuard::webBaseline()
         return false;
     }
 
-
     std::string output;
 
     int exitCode = -1;
 
-
-    return executeRemote(
-        "python3 "
-        + shellQuote(
-            SSHKEY_SCRIPT
-        )
-        + " init",
-        output,
-        exitCode
-    );
+    return executeRemote("python3 " + shellQuote(SSHKEY_SCRIPT) + " init", output, exitCode);
 }
-
 
 bool SSHKeyGuard::webScan()
 {
@@ -3373,23 +1720,12 @@ bool SSHKeyGuard::webScan()
         return false;
     }
 
-
     std::string output;
 
     int exitCode = -1;
 
-
-    return executeRemote(
-        "python3 "
-        + shellQuote(
-            SSHKEY_SCRIPT
-        )
-        + " scan",
-        output,
-        exitCode
-    );
+    return executeRemote("python3 " + shellQuote(SSHKEY_SCRIPT) + " scan", output, exitCode);
 }
-
 
 std::string SSHKeyGuard::webEvents()
 {
@@ -3398,23 +1734,11 @@ std::string SSHKeyGuard::webEvents()
         return "SSH Key Guard is not installed.";
     }
 
-
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "python3 "
-            + shellQuote(
-                SSHKEY_SCRIPT
-            )
-            + " events 50",
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("python3 " + shellQuote(SSHKEY_SCRIPT) + " events 50", output, exitCode))
     {
         if (output.empty())
         {
@@ -3422,10 +1746,8 @@ std::string SSHKeyGuard::webEvents()
         }
     }
 
-
     return output;
 }
-
 
 std::string SSHKeyGuard::webLogs()
 {
@@ -3434,21 +1756,11 @@ std::string SSHKeyGuard::webLogs()
         return "SSH Key Guard service is not installed.";
     }
 
-
     std::string output;
 
     int exitCode = -1;
 
-
-    if (
-        !executeRemote(
-            "journalctl -u "
-            + SSHKEY_SERVICE
-            + " -n 100 --no-pager",
-            output,
-            exitCode
-        )
-        )
+    if (!executeRemote("journalctl -u " + SSHKEY_SERVICE + " -n 100 --no-pager", output, exitCode))
     {
         if (output.empty())
         {
@@ -3456,10 +1768,8 @@ std::string SSHKeyGuard::webLogs()
         }
     }
 
-
     return output;
 }
-
 
 bool SSHKeyGuard::webAudit()
 {
@@ -3468,47 +1778,26 @@ bool SSHKeyGuard::webAudit()
         return false;
     }
 
-
     if (!installAuditd())
     {
         return false;
     }
-
 
     if (!scriptExists())
     {
         return false;
     }
 
-
     std::string output;
 
     int exitCode = -1;
 
-
-    return executeRemote(
-        "python3 "
-        + shellQuote(
-            SSHKEY_SCRIPT
-        )
-        + " audit",
-        output,
-        exitCode
-    );
+    return executeRemote("python3 " + shellQuote(SSHKEY_SCRIPT) + " audit", output, exitCode);
 }
-
 
 bool SSHKeyGuard::webUpdate()
 {
     updateGuard();
 
-
-    return
-        scriptExists()
-        &&
-        (
-            !serviceExists()
-            ||
-            isServiceActive()
-            );
+    return scriptExists() && (!serviceExists() || isServiceActive());
 }
