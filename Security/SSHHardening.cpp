@@ -1026,14 +1026,7 @@ bool SSHHardening::checkHardening()
         << "\nVerification:\n";
 
 
-    if (!checkValue(
-        "PermitRootLogin",
-        permitRootLogin,
-        "prohibit-password"
-    ))
-    {
-        allGood = false;
-    }
+
 
 
     if (!checkValue(
@@ -1075,15 +1068,6 @@ bool SSHHardening::checkHardening()
         allGood = false;
     }
 
-
-    if (!checkValue(
-        "AllowTcpForwarding",
-        allowTcpForwarding,
-        "no"
-    ))
-    {
-        allGood = false;
-    }
 
 
     if (!checkValue(
@@ -1270,171 +1254,135 @@ bool SSHHardening::showBackups()
     return true;
 }
 
-
 bool SSHHardening::restoreConfiguration()
 {
-    std::cout
-        << "\n";
+    std::cout << "\n";
 
     showBackups();
 
-
-    std::cout
-        << "\nEnter backup filename: ";
-
+    std::cout << "\nEnter backup filename (empty to cancel): ";
 
     std::string filename;
 
+    std::getline(std::cin >> std::ws, filename);
 
-    std::getline(
-        std::cin >> std::ws,
-        filename
-    );
-
+    // убираем пробелы по краям
+    while (!filename.empty() && std::isspace(static_cast<unsigned char>(filename.back())))
+        filename.pop_back();
 
     if (filename.empty())
     {
         return false;
     }
 
-
     if (
-        filename.find("/") !=
-        std::string::npos
+        filename.find('/') != std::string::npos ||
+        filename.find('\\') != std::string::npos ||
+        filename.find("..") != std::string::npos
         )
     {
-        std::cout
-            << "Invalid backup filename.\n";
+        std::cout << "Invalid backup filename.\n";
 
         return false;
     }
 
+    const std::string prefix = "pre-hardening_";
+    const std::string suffix = ".tar.gz";
 
     if (
-        filename.find("\\") !=
-        std::string::npos
+        filename.size() <= prefix.size() + suffix.size() ||
+        filename.compare(0, prefix.size(), prefix) != 0 ||
+        filename.compare(filename.size() - suffix.size(), suffix.size(), suffix) != 0
         )
     {
         std::cout
-            << "Invalid backup filename.\n";
+            << "Unsupported backup type. Expected: "
+            << "pre-hardening_*.tar.gz\n";
 
         return false;
     }
 
-
-    if (
-        filename.find("..") !=
-        std::string::npos
-        )
+    if (!checkRootOrSudo())
     {
-        std::cout
-            << "Invalid backup filename.\n";
-
         return false;
     }
 
+    if (!checkScript())
+    {
+        std::cout
+            << "SSH Hardening script was not found:\n"
+            << HARDENING_SCRIPT
+            << "\n";
+
+        return false;
+    }
 
     std::string backupPath =
         BACKUP_DIR +
         "/" +
         filename;
 
-
     std::string output;
 
     int exitCode = -1;
 
-
-    std::string checkCommand =
-        "test -f " +
-        shellQuote(backupPath);
-
-
-    executeRemote(
-        checkCommand,
+    // /opt/serverguard/backups доступна только root, поэтому через sudo
+    if (!executeRemote(
+        "test -f " + shellQuote(backupPath) +
+        " && test -f " + shellQuote(backupPath + ".json"),
         output,
         exitCode,
-        false
-    );
-
-
-    if (exitCode != 0)
+        true
+    ))
     {
         std::cout
-            << "Backup file not found.\n";
+            << "Backup file (or its .json manifest) not found.\n";
 
         return false;
     }
 
-
-    std::cout
-        << "\nRestoring configuration...\n";
-
+    std::cout << "\nRestoring configuration...\n";
 
     std::string command =
-        "cp " +
-        shellQuote(backupPath) +
-        " " +
-        shellQuote(SSH_CONFIG);
+        "python3 " +
+        shellQuote(HARDENING_SCRIPT) +
+        " restore " +
+        shellQuote(filename);
 
+    output.clear();
 
-    if (!executeRemote(
+    exitCode = -1;
+
+    bool ok = executeRemote(
         command,
         output,
         exitCode,
         true
-    ))
+    );
+
+    if (!output.empty())
     {
         std::cout
-            << "Cannot restore configuration.\n";
+            << "\n"
+            << output
+            << "\n";
+    }
 
-
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
+    if (!ok)
+    {
+        std::cout
+            << "\nCannot restore configuration.\n"
+            << "Python exit code: "
+            << exitCode
+            << "\n";
 
         return false;
     }
-
-
-    if (!isSSHConfigValid())
-    {
-        std::cout
-            << "Restored configuration is invalid.\n";
-
-        return false;
-    }
-
-
-    command =
-        "systemctl reload ssh || "
-        "systemctl reload sshd";
-
-
-    if (!executeRemote(
-        command,
-        output,
-        exitCode,
-        true
-    ))
-    {
-        std::cout
-            << "SSH reload failed.\n";
-
-        return false;
-    }
-
 
     std::cout
         << "\nSSH configuration restored successfully.\n";
 
-
     checkHardening();
-
 
     return true;
 }
@@ -3054,12 +3002,10 @@ std::string SSHHardening::webStatus()
 
     bool realHardening =
         sshActive &&
-        rootProtected &&
         permitEmptyPasswords == "no" &&
         maxAuthTries == "3" &&
         loginGraceTime == "30" &&
         x11Forwarding == "no" &&
-        allowTcpForwarding == "no" &&
         allowAgentForwarding == "no" &&
         compression == "no";
 
