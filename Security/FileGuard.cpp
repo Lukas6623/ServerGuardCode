@@ -1,99 +1,57 @@
 #include "FileGuard.h"
-
 #include <libssh2.h>
-
 #include <algorithm>
 #include <iostream>
 #include <string>
 
-
-static const std::string FILEGUARD_DATA_DIR =
-"/opt/serverguard/data";
-
-static const std::string FILEGUARD_SCRIPT =
-"/opt/serverguard/file_guard.py";
-
-static const std::string FILEGUARD_SERVICE =
-"serverguard-fileguard.service";
-
-static const std::string FILEGUARD_SERVICE_PATH =
-"/etc/systemd/system/serverguard-fileguard.service";
-
+static const std::string FILEGUARD_DATA_DIR = "/opt/serverguard/data";
+static const std::string FILEGUARD_SCRIPT = "/opt/serverguard/file_guard.py";
+static const std::string FILEGUARD_SERVICE = "serverguard-fileguard.service";
+static const std::string FILEGUARD_SERVICE_PATH = "/etc/systemd/system/serverguard-fileguard.service";
 
 static const std::string FILEGUARD_UPDATE_URL =
 "https://raw.githubusercontent.com/"
 "Lukas6623/ServerGuard/main/file_guard.py";
 
-static const std::string FILEGUARD_TEMP_SCRIPT =
-"/opt/serverguard/file_guard.py.update";
+static const std::string FILEGUARD_TEMP_SCRIPT = "/opt/serverguard/file_guard.py.update";
+static const std::string FILEGUARD_BACKUP_DIR = "/opt/serverguard/backups/fileguard";
+static const std::string FILEGUARD_BACKUP_SCRIPT = "/opt/serverguard/backups/fileguard/file_guard.py";
 
-static const std::string FILEGUARD_BACKUP_DIR =
-"/opt/serverguard/backups/fileguard";
-
-static const std::string FILEGUARD_BACKUP_SCRIPT =
-"/opt/serverguard/backups/fileguard/file_guard.py";
-
-
-static std::string shellQuote(
-    const std::string& value)
+static std::string shellQuote(const std::string& value)
 {
     std::string result = "'";
 
     for (char c : value)
     {
-        if (c == '\'')
-        {
-            result += "'\\''";
-        }
-        else
-        {
-            result += c;
-        }
+        if (c == '\'') result += "'\\''";
+        else result += c;
     }
 
     result += "'";
-
     return result;
 }
 
-
-FileGuard::FileGuard(
-    LIBSSH2_SESSION* session,
-    const std::string& sudoPassword)
-    :
-    session(session),
-    sudoPassword(sudoPassword)
+FileGuard::FileGuard(LIBSSH2_SESSION* session, const std::string& sudoPassword)
+    : session(session), sudoPassword(sudoPassword)
 {}
 
-
-bool FileGuard::executeRemote(
-    const std::string& command,
-    std::string* output)
+bool FileGuard::executeRemote(const std::string& command, std::string* output)
 {
     if (!session)
     {
-        std::cout
-            << "Invalid SSH session.\n";
-
+        std::cout << "Invalid SSH session.\n";
         return false;
     }
 
-
-    LIBSSH2_CHANNEL* channel =
-        libssh2_channel_open_session(session);
+    LIBSSH2_CHANNEL* channel = libssh2_channel_open_session(session);
 
     if (!channel)
     {
-        std::cout
-            << "Cannot open SSH channel.\n";
-
+        std::cout << "Cannot open SSH channel.\n";
         return false;
     }
 
-
-    std::string finalCommand =
-        command;
-
+    std::string finalCommand = command;
 
     if (!sudoPassword.empty())
     {
@@ -102,315 +60,131 @@ bool FileGuard::executeRemote(
             "abcdefghijklmnopqrstuvwxyz"
             "0123456789+/";
 
-
-        const unsigned char* data =
-            reinterpret_cast<
-            const unsigned char*
-            >(sudoPassword.data());
-
-
-        size_t len =
-            sudoPassword.size();
-
-
+        const unsigned char* data = reinterpret_cast<const unsigned char*>(sudoPassword.data());
+        size_t len = sudoPassword.size();
         std::string encodedPassword;
-
 
         for (size_t i = 0; i < len; i += 3)
         {
             unsigned int value = 0;
 
+            value |= static_cast<unsigned int>(data[i]) << 16;
+            if (i + 1 < len) value |= static_cast<unsigned int>(data[i + 1]) << 8;
+            if (i + 2 < len) value |= static_cast<unsigned int>(data[i + 2]);
 
-            value |=
-                static_cast<unsigned int>(
-                    data[i]
-                    ) << 16;
+            encodedPassword += alphabet[(value >> 18) & 0x3F];
+            encodedPassword += alphabet[(value >> 12) & 0x3F];
 
+            if (i + 1 < len) encodedPassword += alphabet[(value >> 6) & 0x3F];
+            else encodedPassword += '=';
 
-            if (i + 1 < len)
-            {
-                value |=
-                    static_cast<unsigned int>(
-                        data[i + 1]
-                        ) << 8;
-            }
-
-
-            if (i + 2 < len)
-            {
-                value |=
-                    static_cast<unsigned int>(
-                        data[i + 2]
-                        );
-            }
-
-
-            encodedPassword +=
-                alphabet[
-                    (value >> 18) & 0x3F
-                ];
-
-
-            encodedPassword +=
-                alphabet[
-                    (value >> 12) & 0x3F
-                ];
-
-
-            if (i + 1 < len)
-            {
-                encodedPassword +=
-                    alphabet[
-                        (value >> 6) & 0x3F
-                    ];
-            }
-            else
-            {
-                encodedPassword += '=';
-            }
-
-
-            if (i + 2 < len)
-            {
-                encodedPassword +=
-                    alphabet[
-                        value & 0x3F
-                    ];
-            }
-            else
-            {
-                encodedPassword += '=';
-            }
+            if (i + 2 < len) encodedPassword += alphabet[value & 0x3F];
+            else encodedPassword += '=';
         }
 
-
-        finalCommand =
-            "echo " +
-            shellQuote(encodedPassword) +
-            " | base64 -d | sudo -S -p '' bash -c " +
-            shellQuote(command);
+        finalCommand = "echo " + shellQuote(encodedPassword) +
+            " | base64 -d | sudo -S -p '' bash -c " + shellQuote(command);
     }
 
-
-    if (libssh2_channel_exec(
-        channel,
-        finalCommand.c_str()) != 0)
+    if (libssh2_channel_exec(channel, finalCommand.c_str()) != 0)
     {
-        std::cout
-            << "Cannot execute remote command.\n";
-
+        std::cout << "Cannot execute remote command.\n";
         libssh2_channel_free(channel);
-
         return false;
     }
 
-
     char buffer[4096];
-
     std::string result;
 
-
     while (true)
     {
-        int rc =
-            libssh2_channel_read(
-                channel,
-                buffer,
-                sizeof(buffer) - 1);
+        int rc = libssh2_channel_read(channel, buffer, sizeof(buffer) - 1);
 
         if (rc > 0)
         {
             buffer[rc] = '\0';
-
             result += buffer;
         }
-        else
-        {
-            break;
-        }
+        else break;
     }
-
 
     while (true)
     {
-        int rc =
-            libssh2_channel_read_stderr(
-                channel,
-                buffer,
-                sizeof(buffer) - 1);
+        int rc = libssh2_channel_read_stderr(channel, buffer, sizeof(buffer) - 1);
 
         if (rc > 0)
         {
             buffer[rc] = '\0';
-
             result += buffer;
         }
-        else
-        {
-            break;
-        }
+        else break;
     }
-
 
     libssh2_channel_send_eof(channel);
-
     libssh2_channel_wait_eof(channel);
-
     libssh2_channel_wait_closed(channel);
 
-
-    int exitCode =
-        libssh2_channel_get_exit_status(
-            channel);
-
-
+    int exitCode = libssh2_channel_get_exit_status(channel);
     libssh2_channel_free(channel);
 
-
-    if (output)
-    {
-        *output = result;
-    }
-
+    if (output) *output = result;
 
     return exitCode == 0;
 }
-
 
 bool FileGuard::checkRootOrSudo()
 {
     std::string output;
 
-
-    if (executeRemote(
-        "id -u",
-        &output))
+    if (executeRemote("id -u", &output))
     {
-        std::string value =
-            output;
+        std::string value = output;
 
+        value.erase(std::remove(value.begin(), value.end(), '\n'), value.end());
+        value.erase(std::remove(value.begin(), value.end(), '\r'), value.end());
 
-        value.erase(
-            std::remove(
-                value.begin(),
-                value.end(),
-                '\n'),
-            value.end());
-
-
-        value.erase(
-            std::remove(
-                value.begin(),
-                value.end(),
-                '\r'),
-            value.end());
-
-
-        if (value == "0")
-        {
-            return true;
-        }
+        if (value == "0") return true;
     }
-
 
     if (sudoPassword.empty())
     {
-        std::cout
-            << "Root privileges are required.\n";
-
+        std::cout << "Root privileges are required.\n";
         return false;
     }
 
+    if (executeRemote("sudo -S -p '' -v", &output)) return true;
 
-    if (executeRemote(
-        "sudo -S -p '' -v",
-        &output))
-    {
-        return true;
-    }
-
-
-    std::cout
-        << "Cannot obtain sudo privileges.\n";
-
-
+    std::cout << "Cannot obtain sudo privileges.\n";
     return false;
 }
 
-
-bool FileGuard::commandExists(
-    const std::string& command)
+bool FileGuard::commandExists(const std::string& command)
 {
     std::string output;
-
-
-    return executeRemote(
-        "command -v " +
-        shellQuote(command) +
-        " >/dev/null 2>&1",
-        &output);
+    return executeRemote("command -v " + shellQuote(command) + " >/dev/null 2>&1", &output);
 }
-
 
 bool FileGuard::createDirectories()
 {
-    std::cout
-        << "[1/6] Creating directories...\n";
-
-
-    return executeRemote(
-        "mkdir -p " +
-        shellQuote(FILEGUARD_DATA_DIR));
+    std::cout << "[1/6] Creating directories...\n";
+    return executeRemote("mkdir -p " + shellQuote(FILEGUARD_DATA_DIR));
 }
-
 
 bool FileGuard::setPermissions()
 {
-    std::cout
-        << "[2/6] Setting permissions...\n";
+    std::cout << "[2/6] Setting permissions...\n";
 
-
-    if (!executeRemote(
-        "chown root:root " +
-        shellQuote(FILEGUARD_SCRIPT)))
-    {
-        return false;
-    }
-
-
-    if (!executeRemote(
-        "chmod 700 " +
-        shellQuote(FILEGUARD_SCRIPT)))
-    {
-        return false;
-    }
-
-
-    if (!executeRemote(
-        "chown root:root " +
-        shellQuote(FILEGUARD_DATA_DIR)))
-    {
-        return false;
-    }
-
-
-    if (!executeRemote(
-        "chmod 700 " +
-        shellQuote(FILEGUARD_DATA_DIR)))
-    {
-        return false;
-    }
-
+    if (!executeRemote("chown root:root " + shellQuote(FILEGUARD_SCRIPT))) return false;
+    if (!executeRemote("chmod 700 " + shellQuote(FILEGUARD_SCRIPT))) return false;
+    if (!executeRemote("chown root:root " + shellQuote(FILEGUARD_DATA_DIR))) return false;
+    if (!executeRemote("chmod 700 " + shellQuote(FILEGUARD_DATA_DIR))) return false;
 
     return true;
 }
 
-
 bool FileGuard::createSystemdService()
 {
-    std::cout
-        << "[3/6] Creating systemd service...\n";
-
+    std::cout << "[3/6] Creating systemd service...\n";
 
     const std::string service =
         R"(# ServerGuard FileGuard
@@ -437,190 +211,82 @@ NoNewPrivileges=false
 WantedBy=multi-user.target
 )";
 
-
     const std::string alphabet =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "abcdefghijklmnopqrstuvwxyz"
         "0123456789+/";
 
-
     std::string encoded;
-
 
     for (size_t i = 0; i < service.size(); i += 3)
     {
         unsigned int value = 0;
 
-        value |=
-            static_cast<unsigned int>(
-                static_cast<unsigned char>(
-                    service[i]
-                    )
-                ) << 16;
+        value |= static_cast<unsigned int>(static_cast<unsigned char>(service[i])) << 16;
+        if (i + 1 < service.size()) value |= static_cast<unsigned int>(static_cast<unsigned char>(service[i + 1])) << 8;
+        if (i + 2 < service.size()) value |= static_cast<unsigned int>(static_cast<unsigned char>(service[i + 2]));
 
+        encoded += alphabet[(value >> 18) & 0x3F];
+        encoded += alphabet[(value >> 12) & 0x3F];
 
-        if (i + 1 < service.size())
-        {
-            value |=
-                static_cast<unsigned int>(
-                    static_cast<unsigned char>(
-                        service[i + 1]
-                        )
-                    ) << 8;
-        }
+        if (i + 1 < service.size()) encoded += alphabet[(value >> 6) & 0x3F];
+        else encoded += '=';
 
-
-        if (i + 2 < service.size())
-        {
-            value |=
-                static_cast<unsigned int>(
-                    static_cast<unsigned char>(
-                        service[i + 2]
-                        )
-                    );
-        }
-
-
-        encoded +=
-            alphabet[
-                (value >> 18) & 0x3F
-            ];
-
-
-        encoded +=
-            alphabet[
-                (value >> 12) & 0x3F
-            ];
-
-
-        if (i + 1 < service.size())
-        {
-            encoded +=
-                alphabet[
-                    (value >> 6) & 0x3F
-                ];
-        }
-        else
-        {
-            encoded += '=';
-        }
-
-
-        if (i + 2 < service.size())
-        {
-            encoded +=
-                alphabet[
-                    value & 0x3F
-                ];
-        }
-        else
-        {
-            encoded += '=';
-        }
+        if (i + 2 < service.size()) encoded += alphabet[value & 0x3F];
+        else encoded += '=';
     }
 
+    std::string command = "echo " + shellQuote(encoded) + " | base64 -d > " + shellQuote(FILEGUARD_SERVICE_PATH);
 
-    std::string command =
-        "echo " +
-        shellQuote(encoded) +
-        " | base64 -d > " +
-        shellQuote(FILEGUARD_SERVICE_PATH);
-
-
-    if (!executeRemote(command))
-    {
-        return false;
-    }
-
-
-    if (!executeRemote(
-        "chmod 644 " +
-        shellQuote(FILEGUARD_SERVICE_PATH)))
-    {
-        return false;
-    }
-
+    if (!executeRemote(command)) return false;
+    if (!executeRemote("chmod 644 " + shellQuote(FILEGUARD_SERVICE_PATH))) return false;
 
     return true;
 }
 
-
 bool FileGuard::reloadSystemd()
 {
-    std::cout
-        << "[4/6] Reloading systemd...\n";
-
-
-    return executeRemote(
-        "systemctl daemon-reload");
+    std::cout << "[4/6] Reloading systemd...\n";
+    return executeRemote("systemctl daemon-reload");
 }
-
 
 bool FileGuard::enableService()
 {
-    std::cout
-        << "[5/6] Enabling service...\n";
-
-
-    return executeRemote(
-        "systemctl enable " +
-        shellQuote(FILEGUARD_SERVICE));
+    std::cout << "[5/6] Enabling service...\n";
+    return executeRemote("systemctl enable " + shellQuote(FILEGUARD_SERVICE));
 }
-
 
 bool FileGuard::startService()
 {
-    std::cout
-        << "[6/6] Starting service...\n";
-
-
-    return executeRemote(
-        "systemctl restart " +
-        shellQuote(FILEGUARD_SERVICE));
+    std::cout << "[6/6] Starting service...\n";
+    return executeRemote("systemctl restart " + shellQuote(FILEGUARD_SERVICE));
 }
-
 
 bool FileGuard::stopService()
 {
-    return executeRemote(
-        "systemctl stop " +
-        shellQuote(FILEGUARD_SERVICE));
+    return executeRemote("systemctl stop " + shellQuote(FILEGUARD_SERVICE));
 }
-
 
 bool FileGuard::disableService()
 {
-    return executeRemote(
-        "systemctl disable " +
-        shellQuote(FILEGUARD_SERVICE));
+    return executeRemote("systemctl disable " + shellQuote(FILEGUARD_SERVICE));
 }
-
 
 bool FileGuard::serviceExists()
 {
     std::string output;
 
-
     return executeRemote(
-        "systemctl list-unit-files " +
-        shellQuote(FILEGUARD_SERVICE) +
-        " --no-legend | grep -q " +
-        shellQuote(FILEGUARD_SERVICE),
+        "systemctl list-unit-files " + shellQuote(FILEGUARD_SERVICE) +
+        " --no-legend | grep -q " + shellQuote(FILEGUARD_SERVICE),
         &output);
 }
-
 
 bool FileGuard::serviceIsActive()
 {
     std::string output;
-
-
-    return executeRemote(
-        "systemctl is-active --quiet " +
-        shellQuote(FILEGUARD_SERVICE),
-        &output);
+    return executeRemote("systemctl is-active --quiet " + shellQuote(FILEGUARD_SERVICE), &output);
 }
-
 
 bool FileGuard::install()
 {
@@ -629,57 +295,37 @@ bool FileGuard::install()
         << "      INSTALL SERVERGUARD FILEGUARD\n"
         << "========================================\n\n";
 
+    if (!checkRootOrSudo()) return false;
 
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
-
-    std::cout
-        << "[1/8] Checking Python3...\n";
+    std::cout << "[1/8] Checking Python3...\n";
 
     if (!commandExists("python3"))
     {
-        std::cout
-            << "Python3 is not installed.\n";
-
+        std::cout << "Python3 is not installed.\n";
         return false;
     }
 
-
-    std::cout
-        << "[2/8] Checking systemd...\n";
+    std::cout << "[2/8] Checking systemd...\n";
 
     if (!commandExists("systemctl"))
     {
-        std::cout
-            << "systemctl is not available.\n";
-
+        std::cout << "systemctl is not available.\n";
         return false;
     }
 
-
-    std::cout
-        << "[3/8] Checking base64...\n";
+    std::cout << "[3/8] Checking base64...\n";
 
     if (!commandExists("base64"))
     {
-        std::cout
-            << "base64 is not available.\n";
-
+        std::cout << "base64 is not available.\n";
         return false;
     }
 
-
-    std::cout
-        << "[4/8] Checking curl...\n";
+    std::cout << "[4/8] Checking curl...\n";
 
     if (!commandExists("curl"))
     {
-        std::cout
-            << "curl is not installed.\n"
-            << "Installing curl...\n";
+        std::cout << "curl is not installed.\n" << "Installing curl...\n";
 
         std::string output;
 
@@ -689,52 +335,29 @@ bool FileGuard::install()
             "apt-get install -y curl",
             &output))
         {
-            std::cout
-                << "Cannot install curl.\n";
-
-            if (!output.empty())
-            {
-                std::cout
-                    << output
-                    << "\n";
-            }
-
+            std::cout << "Cannot install curl.\n";
+            if (!output.empty()) std::cout << output << "\n";
             return false;
         }
 
         if (!commandExists("curl"))
         {
-            std::cout
-                << "curl installation failed.\n";
-
+            std::cout << "curl installation failed.\n";
             return false;
         }
     }
 
+    std::cout << "[5/8] Creating directories...\n";
 
-    std::cout
-        << "[5/8] Creating directories...\n";
-
-    if (!executeRemote(
-        "mkdir -p " +
-        shellQuote(FILEGUARD_DATA_DIR) +
-        " " +
-        shellQuote("/opt/serverguard")))
+    if (!executeRemote("mkdir -p " + shellQuote(FILEGUARD_DATA_DIR) + " " + shellQuote("/opt/serverguard")))
     {
-        std::cout
-            << "Cannot create FileGuard directories.\n";
-
+        std::cout << "Cannot create FileGuard directories.\n";
         return false;
     }
 
+    std::cout << "[6/8] Downloading FileGuard script...\n";
 
-    std::cout
-        << "[6/8] Downloading FileGuard script...\n";
-
-    executeRemote(
-        "rm -f " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+    executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
 
     std::string downloadOutput;
 
@@ -744,51 +367,26 @@ bool FileGuard::install()
         "--max-time 120 "
         "--retry 3 "
         "--retry-delay 2 "
-        "-o " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT) +
-        " " +
-        shellQuote(FILEGUARD_UPDATE_URL);
+        "-o " + shellQuote(FILEGUARD_TEMP_SCRIPT) + " " + shellQuote(FILEGUARD_UPDATE_URL);
 
-
-    if (!executeRemote(
-        downloadCommand,
-        &downloadOutput))
+    if (!executeRemote(downloadCommand, &downloadOutput))
     {
-        std::cout
-            << "FileGuard download failed.\n";
+        std::cout << "FileGuard download failed.\n";
+        if (!downloadOutput.empty()) std::cout << downloadOutput << "\n";
 
-        if (!downloadOutput.empty())
-        {
-            std::cout
-                << downloadOutput
-                << "\n";
-        }
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+        executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
         return false;
     }
 
-
-    if (!executeRemote(
-        "test -s " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT)))
+    if (!executeRemote("test -s " + shellQuote(FILEGUARD_TEMP_SCRIPT)))
     {
-        std::cout
-            << "Downloaded FileGuard script is empty or missing.\n";
+        std::cout << "Downloaded FileGuard script is empty or missing.\n";
 
-        executeRemote(
-            "rm -f " +
-            shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+        executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
         return false;
     }
 
-
-    std::cout
-        << "Checking FileGuard Python syntax...\n";
+    std::cout << "Checking FileGuard Python syntax...\n";
 
     std::string syntaxOutput;
 
@@ -799,109 +397,56 @@ bool FileGuard::install()
             "p=open(sys.argv[1],encoding='utf-8').read();"
             "ast.parse(p,filename=sys.argv[1]);"
             "print('Python syntax: OK')"
-        ) +
-        " " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT);
+        ) + " " + shellQuote(FILEGUARD_TEMP_SCRIPT);
 
-
-    if (!executeRemote(
-        syntaxCommand,
-        &syntaxOutput))
+    if (!executeRemote(syntaxCommand, &syntaxOutput))
     {
-        std::cout
-            << "FileGuard Python syntax verification FAILED.\n";
+        std::cout << "FileGuard Python syntax verification FAILED.\n";
+        if (!syntaxOutput.empty()) std::cout << syntaxOutput << "\n";
 
-        if (!syntaxOutput.empty())
-        {
-            std::cout
-                << syntaxOutput
-                << "\n";
-        }
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+        executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
         return false;
     }
 
+    if (!syntaxOutput.empty()) std::cout << syntaxOutput;
 
-    if (!syntaxOutput.empty())
+    std::cout << "Installing FileGuard script...\n";
+
+    if (!executeRemote("mv -f " + shellQuote(FILEGUARD_TEMP_SCRIPT) + " " + shellQuote(FILEGUARD_SCRIPT)))
     {
-        std::cout
-            << syntaxOutput;
-    }
+        std::cout << "Cannot install FileGuard script.\n";
 
-
-    std::cout
-        << "Installing FileGuard script...\n";
-
-    if (!executeRemote(
-        "mv -f " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT) +
-        " " +
-        shellQuote(FILEGUARD_SCRIPT)))
-    {
-        std::cout
-            << "Cannot install FileGuard script.\n";
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+        executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
         return false;
     }
 
+    std::cout << "[7/8] Setting permissions...\n";
 
-    std::cout
-        << "[7/8] Setting permissions...\n";
-
-    if (!executeRemote(
-        "chown root:root " +
-        shellQuote(FILEGUARD_SCRIPT)))
+    if (!executeRemote("chown root:root " + shellQuote(FILEGUARD_SCRIPT)))
     {
-        std::cout
-            << "Cannot set FileGuard script owner.\n";
-
+        std::cout << "Cannot set FileGuard script owner.\n";
         return false;
     }
 
-
-    if (!executeRemote(
-        "chmod 700 " +
-        shellQuote(FILEGUARD_SCRIPT)))
+    if (!executeRemote("chmod 700 " + shellQuote(FILEGUARD_SCRIPT)))
     {
-        std::cout
-            << "Cannot set FileGuard script permissions.\n";
-
+        std::cout << "Cannot set FileGuard script permissions.\n";
         return false;
     }
 
-
-    if (!executeRemote(
-        "chown root:root " +
-        shellQuote(FILEGUARD_DATA_DIR)))
+    if (!executeRemote("chown root:root " + shellQuote(FILEGUARD_DATA_DIR)))
     {
-        std::cout
-            << "Cannot set FileGuard data directory owner.\n";
-
+        std::cout << "Cannot set FileGuard data directory owner.\n";
         return false;
     }
 
-
-    if (!executeRemote(
-        "chmod 700 " +
-        shellQuote(FILEGUARD_DATA_DIR)))
+    if (!executeRemote("chmod 700 " + shellQuote(FILEGUARD_DATA_DIR)))
     {
-        std::cout
-            << "Cannot set FileGuard data directory permissions.\n";
-
+        std::cout << "Cannot set FileGuard data directory permissions.\n";
         return false;
     }
 
-
-    std::cout
-        << "[8/8] Installing systemd service...\n";
+    std::cout << "[8/8] Installing systemd service...\n";
 
     const std::string service =
         R"(# ServerGuard FileGuard
@@ -923,7 +468,6 @@ NoNewPrivileges=false
 WantedBy=multi-user.target
 )";
 
-
     const std::string alphabet =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         "abcdefghijklmnopqrstuvwxyz"
@@ -935,362 +479,177 @@ WantedBy=multi-user.target
     {
         unsigned int value = 0;
 
-        value |=
-            static_cast<unsigned int>(
-                static_cast<unsigned char>(
-                    service[i]
-                    )
-                ) << 16;
+        value |= static_cast<unsigned int>(static_cast<unsigned char>(service[i])) << 16;
+        if (i + 1 < service.size()) value |= static_cast<unsigned int>(static_cast<unsigned char>(service[i + 1])) << 8;
+        if (i + 2 < service.size()) value |= static_cast<unsigned int>(static_cast<unsigned char>(service[i + 2]));
 
+        encoded += alphabet[(value >> 18) & 0x3F];
+        encoded += alphabet[(value >> 12) & 0x3F];
 
-        if (i + 1 < service.size())
-        {
-            value |=
-                static_cast<unsigned int>(
-                    static_cast<unsigned char>(
-                        service[i + 1]
-                        )
-                    ) << 8;
-        }
+        if (i + 1 < service.size()) encoded += alphabet[(value >> 6) & 0x3F];
+        else encoded += '=';
 
-
-        if (i + 2 < service.size())
-        {
-            value |=
-                static_cast<unsigned int>(
-                    static_cast<unsigned char>(
-                        service[i + 2]
-                        )
-                    );
-        }
-
-
-        encoded +=
-            alphabet[
-                (value >> 18) & 0x3F
-            ];
-
-
-        encoded +=
-            alphabet[
-                (value >> 12) & 0x3F
-            ];
-
-
-        if (i + 1 < service.size())
-        {
-            encoded +=
-                alphabet[
-                    (value >> 6) & 0x3F
-                ];
-        }
-        else
-        {
-            encoded += '=';
-        }
-
-
-        if (i + 2 < service.size())
-        {
-            encoded +=
-                alphabet[
-                    value & 0x3F
-                ];
-        }
-        else
-        {
-            encoded += '=';
-        }
+        if (i + 2 < service.size()) encoded += alphabet[value & 0x3F];
+        else encoded += '=';
     }
 
-
-    const std::string serviceCommand =
-        "echo " +
-        shellQuote(encoded) +
-        " | base64 -d > " +
-        shellQuote(FILEGUARD_SERVICE_PATH);
-
+    const std::string serviceCommand = "echo " + shellQuote(encoded) + " | base64 -d > " + shellQuote(FILEGUARD_SERVICE_PATH);
 
     if (!executeRemote(serviceCommand))
     {
-        std::cout
-            << "Cannot create FileGuard systemd service.\n";
-
+        std::cout << "Cannot create FileGuard systemd service.\n";
         return false;
     }
 
-
-    if (!executeRemote(
-        "chmod 644 " +
-        shellQuote(FILEGUARD_SERVICE_PATH)))
+    if (!executeRemote("chmod 644 " + shellQuote(FILEGUARD_SERVICE_PATH)))
     {
-        std::cout
-            << "Cannot set systemd service permissions.\n";
-
+        std::cout << "Cannot set systemd service permissions.\n";
         return false;
     }
 
+    std::cout << "Reloading systemd...\n";
 
-    std::cout
-        << "Reloading systemd...\n";
-
-    if (!executeRemote(
-        "systemctl daemon-reload"))
+    if (!executeRemote("systemctl daemon-reload"))
     {
-        std::cout
-            << "systemd daemon-reload failed.\n";
-
+        std::cout << "systemd daemon-reload failed.\n";
         return false;
     }
 
+    std::cout << "Enabling FileGuard service...\n";
 
-    std::cout
-        << "Enabling FileGuard service...\n";
-
-    if (!executeRemote(
-        "systemctl enable " +
-        shellQuote(FILEGUARD_SERVICE)))
+    if (!executeRemote("systemctl enable " + shellQuote(FILEGUARD_SERVICE)))
     {
-        std::cout
-            << "Cannot enable FileGuard service.\n";
-
+        std::cout << "Cannot enable FileGuard service.\n";
         return false;
     }
 
-
-    std::cout
-        << "Starting FileGuard service...\n";
+    std::cout << "Starting FileGuard service...\n";
 
     std::string startOutput;
 
-    if (!executeRemote(
-        "systemctl restart " +
-        shellQuote(FILEGUARD_SERVICE),
-        &startOutput))
+    if (!executeRemote("systemctl restart " + shellQuote(FILEGUARD_SERVICE), &startOutput))
     {
-        std::cout
-            << "Cannot start FileGuard service.\n";
-
-        if (!startOutput.empty())
-        {
-            std::cout
-                << startOutput
-                << "\n";
-        }
-
+        std::cout << "Cannot start FileGuard service.\n";
+        if (!startOutput.empty()) std::cout << startOutput << "\n";
         return false;
     }
-
 
     executeRemote("sleep 1");
 
-
     std::string statusOutput;
 
-    if (!executeRemote(
-        "systemctl is-active " +
-        shellQuote(FILEGUARD_SERVICE),
-        &statusOutput))
+    if (!executeRemote("systemctl is-active " + shellQuote(FILEGUARD_SERVICE), &statusOutput))
     {
-        std::cout
-            << "\nFileGuard service failed to start.\n";
-
-        std::cout
-            << "\nSystemd status:\n";
+        std::cout << "\nFileGuard service failed to start.\n";
+        std::cout << "\nSystemd status:\n";
 
         std::string journalOutput;
 
-        executeRemote(
-            "systemctl status " +
-            shellQuote(FILEGUARD_SERVICE) +
-            " --no-pager -l",
-            &journalOutput);
+        executeRemote("systemctl status " + shellQuote(FILEGUARD_SERVICE) + " --no-pager -l", &journalOutput);
+        if (!journalOutput.empty()) std::cout << journalOutput << "\n";
 
-        if (!journalOutput.empty())
-        {
-            std::cout
-                << journalOutput
-                << "\n";
-        }
-
-        std::cout
-            << "\nRecent logs:\n";
+        std::cout << "\nRecent logs:\n";
 
         journalOutput.clear();
 
-        executeRemote(
-            "journalctl -u " +
-            shellQuote(FILEGUARD_SERVICE) +
-            " -n 30 --no-pager",
-            &journalOutput);
-
-        if (!journalOutput.empty())
-        {
-            std::cout
-                << journalOutput
-                << "\n";
-        }
+        executeRemote("journalctl -u " + shellQuote(FILEGUARD_SERVICE) + " -n 30 --no-pager", &journalOutput);
+        if (!journalOutput.empty()) std::cout << journalOutput << "\n";
 
         return false;
     }
-
 
     std::cout
         << "\n========================================\n"
         << "FileGuard installed successfully.\n"
-        << "Service: "
-        << FILEGUARD_SERVICE
-        << "\n"
+        << "Service: " << FILEGUARD_SERVICE << "\n"
         << "Status: ACTIVE\n"
-        << "Script: "
-        << FILEGUARD_SCRIPT
-        << "\n"
+        << "Script: " << FILEGUARD_SCRIPT << "\n"
         << "========================================\n";
-
 
     return true;
 }
-
 
 bool FileGuard::start()
 {
-    std::cout
-        << "\nStarting FileGuard...\n";
+    std::cout << "\nStarting FileGuard...\n";
 
-
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
+    if (!checkRootOrSudo()) return false;
 
     if (!serviceExists())
     {
-        std::cout
-            << "FileGuard service is not installed.\n";
-
+        std::cout << "FileGuard service is not installed.\n";
         return false;
     }
-
 
     if (!startService())
     {
-        std::cout
-            << "Failed to start FileGuard.\n";
-
+        std::cout << "Failed to start FileGuard.\n";
         return false;
     }
-
 
     if (!serviceIsActive())
     {
-        std::cout
-            << "FileGuard failed to become active.\n";
-
+        std::cout << "FileGuard failed to become active.\n";
         return false;
     }
 
-
-    std::cout
-        << "FileGuard is ACTIVE.\n";
-
-
+    std::cout << "FileGuard is ACTIVE.\n";
     return true;
 }
-
 
 bool FileGuard::stop()
 {
-    std::cout
-        << "\nStopping FileGuard...\n";
+    std::cout << "\nStopping FileGuard...\n";
 
-
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
+    if (!checkRootOrSudo()) return false;
 
     if (!serviceExists())
     {
-        std::cout
-            << "FileGuard service is not installed.\n";
-
+        std::cout << "FileGuard service is not installed.\n";
         return false;
     }
-
 
     if (!stopService())
     {
-        std::cout
-            << "Failed to stop FileGuard.\n";
-
+        std::cout << "Failed to stop FileGuard.\n";
         return false;
     }
 
-
-    std::cout
-        << "FileGuard stopped.\n";
-
-
+    std::cout << "FileGuard stopped.\n";
     return true;
 }
-
 
 bool FileGuard::disable()
 {
-    std::cout
-        << "\nDisabling FileGuard...\n";
+    std::cout << "\nDisabling FileGuard...\n";
 
-
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
+    if (!checkRootOrSudo()) return false;
 
     if (!serviceExists())
     {
-        std::cout
-            << "FileGuard service is not installed.\n";
-
+        std::cout << "FileGuard service is not installed.\n";
         return false;
     }
-
 
     stopService();
 
-
     if (!disableService())
     {
-        std::cout
-            << "Failed to disable FileGuard.\n";
-
+        std::cout << "Failed to disable FileGuard.\n";
         return false;
     }
 
-
-    std::cout
-        << "FileGuard disabled.\n";
-
-
+    std::cout << "FileGuard disabled.\n";
     return true;
 }
 
-
 bool FileGuard::status()
 {
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
+    if (!checkRootOrSudo()) return false;
 
     printStatus();
-
     return serviceIsActive();
 }
-
 
 void FileGuard::printStatus()
 {
@@ -1299,66 +658,33 @@ void FileGuard::printStatus()
         << "          FILEGUARD STATUS\n"
         << "========================================\n";
 
-
     std::string output;
-
 
     if (!serviceExists())
     {
         std::cout
             << "Service: NOT INSTALLED\n"
             << "========================================\n";
-
         return;
     }
 
+    if (serviceIsActive()) std::cout << "Service: ACTIVE / RUNNING\n";
+    else std::cout << "Service: INACTIVE / STOPPED\n";
 
-    if (serviceIsActive())
-    {
-        std::cout
-            << "Service: ACTIVE / RUNNING\n";
-    }
-    else
-    {
-        std::cout
-            << "Service: INACTIVE / STOPPED\n";
-    }
+    if (executeRemote("systemctl is-enabled " + shellQuote(FILEGUARD_SERVICE), &output))
+        std::cout << "Startup: " << output;
 
-
-    if (executeRemote(
-        "systemctl is-enabled " +
-        shellQuote(FILEGUARD_SERVICE),
-        &output))
-    {
-        std::cout
-            << "Startup: "
-            << output;
-    }
-
-
-    std::cout
-        << "Script: "
-        << FILEGUARD_SCRIPT
-        << "\n";
-
-    std::cout
-        << "========================================\n";
+    std::cout << "Script: " << FILEGUARD_SCRIPT << "\n";
+    std::cout << "========================================\n";
 }
-
 
 bool FileGuard::logs()
 {
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
+    if (!checkRootOrSudo()) return false;
 
     printLogs();
-
     return true;
 }
-
 
 void FileGuard::printLogs()
 {
@@ -1367,33 +693,19 @@ void FileGuard::printLogs()
         << "          FILEGUARD LOGS\n"
         << "========================================\n";
 
-
     std::string output;
 
+    executeRemote("journalctl -u " + shellQuote(FILEGUARD_SERVICE) + " -n 100 --no-pager", &output);
 
-    executeRemote(
-        "journalctl -u " +
-        shellQuote(FILEGUARD_SERVICE) +
-        " -n 100 --no-pager",
-        &output);
-
-
-    std::cout
-        << output;
-
-
-    std::cout
-        << "========================================\n";
+    std::cout << output;
+    std::cout << "========================================\n";
 }
-
 
 bool FileGuard::rebuild()
 {
     rebuildBaseline();
-
     return true;
 }
-
 
 void FileGuard::rebuildBaseline()
 {
@@ -1402,122 +714,63 @@ void FileGuard::rebuildBaseline()
         << "       REBUILD FILEGUARD BASELINE\n"
         << "========================================\n";
 
-
-    if (!checkRootOrSudo())
-    {
-        return;
-    }
-
+    if (!checkRootOrSudo()) return;
 
     std::string command =
-        "if [ -f " +
-        shellQuote(FILEGUARD_SCRIPT) +
-        " ]; then "
-        "python3 " +
-        shellQuote(FILEGUARD_SCRIPT) +
-        " --rebuild; "
+        "if [ -f " + shellQuote(FILEGUARD_SCRIPT) + " ]; then "
+        "python3 " + shellQuote(FILEGUARD_SCRIPT) + " --rebuild; "
         "else "
         "echo 'FileGuard script not found'; "
         "exit 1; "
         "fi";
 
-
     std::string output;
 
-
-    if (executeRemote(
-        command,
-        &output))
-    {
-        std::cout
-            << output
-            << "\nBaseline rebuilt successfully.\n";
-    }
+    if (executeRemote(command, &output))
+        std::cout << output << "\nBaseline rebuilt successfully.\n";
     else
-    {
-        std::cout
-            << output
-            << "\nFailed to rebuild baseline.\n";
-    }
+        std::cout << output << "\nFailed to rebuild baseline.\n";
 }
-
 
 bool FileGuard::downloadUpdate()
 {
-    std::cout
-        << "\n[1/5] Downloading new FileGuard...\n";
+    std::cout << "\n[1/5] Downloading new FileGuard...\n";
 
-
-    executeRemote(
-        "rm -f " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+    executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
 
     const std::string command =
         "curl -fL "
         "--connect-timeout 15 "
         "--max-time 120 "
         "--retry 2 "
-        "-o " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT) +
-        " " +
-        shellQuote(FILEGUARD_UPDATE_URL);
-
+        "-o " + shellQuote(FILEGUARD_TEMP_SCRIPT) + " " + shellQuote(FILEGUARD_UPDATE_URL);
 
     std::string output;
 
-
-    if (!executeRemote(
-        command,
-        &output))
+    if (!executeRemote(command, &output))
     {
-        std::cout
-            << "Download failed.\n";
+        std::cout << "Download failed.\n";
+        if (!output.empty()) std::cout << output << "\n";
 
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+        executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
         return false;
     }
 
-
-    if (!executeRemote(
-        "test -s " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT),
-        &output))
+    if (!executeRemote("test -s " + shellQuote(FILEGUARD_TEMP_SCRIPT), &output))
     {
-        std::cout
-            << "Downloaded file is empty.\n";
+        std::cout << "Downloaded file is empty.\n";
 
-        executeRemote(
-            "rm -f " +
-            shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+        executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
         return false;
     }
 
-
-    std::cout
-        << "Download completed.\n";
-
-
+    std::cout << "Download completed.\n";
     return true;
 }
 
-
 bool FileGuard::verifyUpdate()
 {
-    std::cout
-        << "[2/5] Checking Python syntax...\n";
-
+    std::cout << "[2/5] Checking Python syntax...\n";
 
     const std::string command =
         "python3 -c " +
@@ -1526,164 +779,82 @@ bool FileGuard::verifyUpdate()
             "p=open(sys.argv[1],encoding='utf-8').read();"
             "ast.parse(p,filename=sys.argv[1]);"
             "print('Python syntax: OK')"
-        ) +
-        " " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT);
-
+        ) + " " + shellQuote(FILEGUARD_TEMP_SCRIPT);
 
     std::string output;
 
-
-    if (!executeRemote(
-        command,
-        &output))
+    if (!executeRemote(command, &output))
     {
-        std::cout
-            << "Python syntax verification FAILED.\n";
-
-
-        if (!output.empty())
-        {
-            std::cout
-                << output
-                << "\n";
-        }
-
-
+        std::cout << "Python syntax verification FAILED.\n";
+        if (!output.empty()) std::cout << output << "\n";
         return false;
     }
 
+    std::cout << output;
 
-    std::cout
-        << output;
-
-
-    if (!executeRemote(
-        "head -n 1 " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT) +
-        " >/dev/null",
-        &output))
+    if (!executeRemote("head -n 1 " + shellQuote(FILEGUARD_TEMP_SCRIPT) + " >/dev/null", &output))
     {
-        std::cout
-            << "Downloaded FileGuard file is invalid.\n";
-
+        std::cout << "Downloaded FileGuard file is invalid.\n";
         return false;
     }
 
-
-    std::cout
-        << "Update verification completed.\n";
-
-
+    std::cout << "Update verification completed.\n";
     return true;
 }
-
 
 bool FileGuard::backupCurrentScript()
 {
-    std::cout
-        << "[3/5] Creating backup of current FileGuard...\n";
+    std::cout << "[3/5] Creating backup of current FileGuard...\n";
 
-
-    if (!executeRemote(
-        "mkdir -p " +
-        shellQuote(FILEGUARD_BACKUP_DIR)))
+    if (!executeRemote("mkdir -p " + shellQuote(FILEGUARD_BACKUP_DIR)))
     {
-        std::cout
-            << "Cannot create backup directory.\n";
-
+        std::cout << "Cannot create backup directory.\n";
         return false;
     }
 
-
-    if (!executeRemote(
-        "test -f " +
-        shellQuote(FILEGUARD_SCRIPT)))
+    if (!executeRemote("test -f " + shellQuote(FILEGUARD_SCRIPT)))
     {
-        std::cout
-            << "Current FileGuard script not found.\n";
-
+        std::cout << "Current FileGuard script not found.\n";
         return false;
     }
 
-
-    if (!executeRemote(
-        "cp -p " +
-        shellQuote(FILEGUARD_SCRIPT) +
-        " " +
-        shellQuote(FILEGUARD_BACKUP_SCRIPT)))
+    if (!executeRemote("cp -p " + shellQuote(FILEGUARD_SCRIPT) + " " + shellQuote(FILEGUARD_BACKUP_SCRIPT)))
     {
-        std::cout
-            << "Cannot create FileGuard backup.\n";
-
+        std::cout << "Cannot create FileGuard backup.\n";
         return false;
     }
 
+    executeRemote("chown root:root " + shellQuote(FILEGUARD_BACKUP_SCRIPT));
+    executeRemote("chmod 700 " + shellQuote(FILEGUARD_BACKUP_SCRIPT));
 
-    executeRemote(
-        "chown root:root " +
-        shellQuote(FILEGUARD_BACKUP_SCRIPT));
-
-
-    executeRemote(
-        "chmod 700 " +
-        shellQuote(FILEGUARD_BACKUP_SCRIPT));
-
-
-    std::cout
-        << "Backup created:\n"
-        << FILEGUARD_BACKUP_SCRIPT
-        << "\n";
-
-
+    std::cout << "Backup created:\n" << FILEGUARD_BACKUP_SCRIPT << "\n";
     return true;
 }
-
 
 bool FileGuard::installUpdatedScript()
 {
-    std::cout
-        << "[4/5] Installing new FileGuard...\n";
+    std::cout << "[4/5] Installing new FileGuard...\n";
 
-
-    if (!executeRemote(
-        "mv -f " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT) +
-        " " +
-        shellQuote(FILEGUARD_SCRIPT)))
+    if (!executeRemote("mv -f " + shellQuote(FILEGUARD_TEMP_SCRIPT) + " " + shellQuote(FILEGUARD_SCRIPT)))
     {
-        std::cout
-            << "Cannot replace FileGuard script.\n";
-
+        std::cout << "Cannot replace FileGuard script.\n";
         return false;
     }
 
-
-    if (!executeRemote(
-        "chown root:root " +
-        shellQuote(FILEGUARD_SCRIPT)))
+    if (!executeRemote("chown root:root " + shellQuote(FILEGUARD_SCRIPT)))
     {
-        std::cout
-            << "Cannot set owner of updated script.\n";
-
+        std::cout << "Cannot set owner of updated script.\n";
         return false;
     }
 
-
-    if (!executeRemote(
-        "chmod 700 " +
-        shellQuote(FILEGUARD_SCRIPT)))
+    if (!executeRemote("chmod 700 " + shellQuote(FILEGUARD_SCRIPT)))
     {
-        std::cout
-            << "Cannot set permissions of updated script.\n";
-
+        std::cout << "Cannot set permissions of updated script.\n";
         return false;
     }
-
 
     return true;
 }
-
 
 bool FileGuard::rollbackUpdate()
 {
@@ -1692,74 +863,37 @@ bool FileGuard::rollbackUpdate()
         << "        ROLLING BACK FILEGUARD\n"
         << "========================================\n";
 
-
-    if (!executeRemote(
-        "test -f " +
-        shellQuote(FILEGUARD_BACKUP_SCRIPT)))
+    if (!executeRemote("test -f " + shellQuote(FILEGUARD_BACKUP_SCRIPT)))
     {
-        std::cout
-            << "Backup file not found.\n";
-
+        std::cout << "Backup file not found.\n";
         return false;
     }
 
-
-    if (!executeRemote(
-        "cp -p " +
-        shellQuote(FILEGUARD_BACKUP_SCRIPT) +
-        " " +
-        shellQuote(FILEGUARD_SCRIPT)))
+    if (!executeRemote("cp -p " + shellQuote(FILEGUARD_BACKUP_SCRIPT) + " " + shellQuote(FILEGUARD_SCRIPT)))
     {
-        std::cout
-            << "Rollback copy failed.\n";
-
+        std::cout << "Rollback copy failed.\n";
         return false;
     }
 
+    executeRemote("chown root:root " + shellQuote(FILEGUARD_SCRIPT));
+    executeRemote("chmod 700 " + shellQuote(FILEGUARD_SCRIPT));
+    executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
 
-    executeRemote(
-        "chown root:root " +
-        shellQuote(FILEGUARD_SCRIPT));
-
-
-    executeRemote(
-        "chmod 700 " +
-        shellQuote(FILEGUARD_SCRIPT));
-
-
-    executeRemote(
-        "rm -f " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT));
-
-
-    if (!executeRemote(
-        "systemctl restart " +
-        shellQuote(FILEGUARD_SERVICE)))
+    if (!executeRemote("systemctl restart " + shellQuote(FILEGUARD_SERVICE)))
     {
-        std::cout
-            << "Rollback completed, but service restart failed.\n";
-
+        std::cout << "Rollback completed, but service restart failed.\n";
         return false;
     }
-
 
     if (serviceIsActive())
     {
-        std::cout
-            << "Rollback successful.\n"
-            << "Previous FileGuard version is ACTIVE.\n";
-
+        std::cout << "Rollback successful.\n" << "Previous FileGuard version is ACTIVE.\n";
         return true;
     }
 
-
-    std::cout
-        << "Rollback completed, but FileGuard is not active.\n";
-
-
+    std::cout << "Rollback completed, but FileGuard is not active.\n";
     return false;
 }
-
 
 bool FileGuard::update()
 {
@@ -1768,44 +902,26 @@ bool FileGuard::update()
         << "          UPDATE FILEGUARD\n"
         << "========================================\n\n";
 
-
-    if (!checkRootOrSudo())
-    {
-        return false;
-    }
-
+    if (!checkRootOrSudo()) return false;
 
     if (!serviceExists())
     {
-        std::cout
-            << "FileGuard service is not installed.\n"
-            << "Install FileGuard first.\n";
-
+        std::cout << "FileGuard service is not installed.\n" << "Install FileGuard first.\n";
         return false;
     }
 
-
-    if (!executeRemote(
-        "test -f " +
-        shellQuote(FILEGUARD_SCRIPT)))
+    if (!executeRemote("test -f " + shellQuote(FILEGUARD_SCRIPT)))
     {
-        std::cout
-            << "Current FileGuard script was not found.\n";
-
+        std::cout << "Current FileGuard script was not found.\n";
         return false;
     }
-
 
     if (!commandExists("curl"))
     {
-        std::cout
-            << "curl is not installed.\n";
-        std::cout
-            << "Installing curl...\n";
-
+        std::cout << "curl is not installed.\n";
+        std::cout << "Installing curl...\n";
 
         std::string output;
-
 
         if (!executeRemote(
             "apt-get update && "
@@ -1813,87 +929,47 @@ bool FileGuard::update()
             "apt-get install -y curl",
             &output))
         {
-            std::cout
-                << "Cannot install curl.\n";
-
-            if (!output.empty())
-            {
-                std::cout
-                    << output
-                    << "\n";
-            }
-
+            std::cout << "Cannot install curl.\n";
+            if (!output.empty()) std::cout << output << "\n";
             return false;
         }
     }
 
-
-    if (!downloadUpdate())
-    {
-        return false;
-    }
-
+    if (!downloadUpdate()) return false;
 
     if (!verifyUpdate())
     {
-        std::cout
-            << "\nUpdate cancelled.\n"
-            << "Current FileGuard was not changed.\n";
+        std::cout << "\nUpdate cancelled.\n" << "Current FileGuard was not changed.\n";
 
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+        executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
         return false;
     }
-
 
     if (!backupCurrentScript())
     {
-        executeRemote(
-            "rm -f " +
-            shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+        executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
         return false;
     }
-
 
     if (!installUpdatedScript())
     {
-        std::cout
-            << "\nNew FileGuard was not installed.\n";
+        std::cout << "\nNew FileGuard was not installed.\n";
 
-
-        executeRemote(
-            "rm -f " +
-            shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+        executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
         return false;
     }
 
+    std::cout << "[5/5] Restarting FileGuard service...\n";
 
-    std::cout
-        << "[5/5] Restarting FileGuard service...\n";
-
-
-    if (!executeRemote(
-        "systemctl restart " +
-        shellQuote(FILEGUARD_SERVICE)))
+    if (!executeRemote("systemctl restart " + shellQuote(FILEGUARD_SERVICE)))
     {
-        std::cout
-            << "Failed to restart FileGuard.\n";
-
+        std::cout << "Failed to restart FileGuard.\n";
 
         rollbackUpdate();
-
         return false;
     }
 
-
-    executeRemote(
-        "sleep 1");
-
+    executeRemote("sleep 1");
 
     if (!serviceIsActive())
     {
@@ -1902,39 +978,25 @@ bool FileGuard::update()
             << "   NEW FILEGUARD FAILED TO START\n"
             << "========================================\n";
 
-
-        std::cout
-            << "Automatic rollback started...\n";
-
+        std::cout << "Automatic rollback started...\n";
 
         rollbackUpdate();
-
         return false;
     }
 
-
-    executeRemote(
-        "rm -f " +
-        shellQuote(FILEGUARD_TEMP_SCRIPT));
-
+    executeRemote("rm -f " + shellQuote(FILEGUARD_TEMP_SCRIPT));
 
     std::cout
         << "\n========================================\n"
         << "      FILEGUARD UPDATE SUCCESSFUL\n"
         << "========================================\n"
-        << "Source:\n"
-        << FILEGUARD_UPDATE_URL
-        << "\n\n"
+        << "Source:\n" << FILEGUARD_UPDATE_URL << "\n\n"
         << "Service: ACTIVE\n"
-        << "Backup:\n"
-        << FILEGUARD_BACKUP_SCRIPT
-        << "\n"
+        << "Backup:\n" << FILEGUARD_BACKUP_SCRIPT << "\n"
         << "========================================\n";
-
 
     return true;
 }
-
 
 void FileGuard::menu()
 {
@@ -1957,64 +1019,26 @@ void FileGuard::menu()
             << "========================================\n"
             << "Select: ";
 
-
         int choice;
-
-        std::cin
-            >> choice;
-
+        std::cin >> choice;
 
         if (std::cin.fail())
         {
             std::cin.clear();
-
-            std::cin.ignore(
-                10000,
-                '\n');
-
-            std::cout
-                << "Invalid input.\n";
-
+            std::cin.ignore(10000, '\n');
+            std::cout << "Invalid input.\n";
             continue;
         }
 
-
         switch (choice)
         {
-        case 1:
-            install();
-            break;
-
-
-        case 2:
-            start();
-            break;
-
-
-        case 3:
-            stop();
-            break;
-
-
-        case 4:
-            disable();
-            break;
-
-
-        case 5:
-            status();
-            break;
-
-
-        case 6:
-            logs();
-            break;
-
-
-        case 7:
-            rebuild();
-            break;
-
+        case 1: install(); break;
+        case 2: start(); break;
+        case 3: stop(); break;
+        case 4: disable(); break;
+        case 5: status(); break;
+        case 6: logs(); break;
+        case 7: rebuild(); break;
 
         case 8:
         {
@@ -2025,36 +1049,19 @@ void FileGuard::menu()
                 << "restart the service.\n"
                 << "Continue? [y/N]: ";
 
-
             char answer;
+            std::cin >> answer;
 
-            std::cin
-                >> answer;
-
-
-            if (answer == 'y' ||
-                answer == 'Y')
-            {
-                update();
-            }
-            else
-            {
-                std::cout
-                    << "Update cancelled.\n";
-            }
+            if (answer == 'y' || answer == 'Y') update();
+            else std::cout << "Update cancelled.\n";
 
             break;
         }
 
-
-        case 0:
-            return;
-
+        case 0: return;
 
         default:
-            std::cout
-                << "Unknown option.\n";
-
+            std::cout << "Unknown option.\n";
             break;
         }
     }
