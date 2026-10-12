@@ -25,6 +25,7 @@
 #include "WebServer.h"
 #include "Web.h"
 #include "Nano.h"
+#include "Firewall.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -1346,7 +1347,8 @@ void runServerTerminal(
     SSHKeyGuard* sshKeyGuard,
     Security* security,
     SSHHardening* sshHardening,
-    WebServer* webServer)
+    WebServer* webServer,
+    FirewallManager* firewall)
 {
     FileGuard fileGuard(session, cfg.password);
 
@@ -1362,6 +1364,7 @@ void runServerTerminal(
     std::cout << "Type 'hardening' to open SSH hardening menu.\n";
     std::cout << "Type 'sshkeys' to open SSH Key Guard menu.\n";
     std::cout << "Type 'fileguard' to open FileGuard menu.\n";
+    std::cout << "Type 'ports' to manage firewall ports (open/close/block).\n";
     std::cout << "Type 'web install' to install the web interface.\n";
     std::cout << "Type 'web status | web url | web remove' to manage it.\n";
     std::cout << "Type 'exit' to close connection.\n";
@@ -1416,7 +1419,7 @@ void runServerTerminal(
             }
         }
 
-        // nano <file> - встроенный редактор файлов на сервере (Nano.h)
+
         {
             std::string t = trim(command);
 
@@ -1425,6 +1428,21 @@ void runServerTerminal(
                 std::string arg = trim(t.substr(4));
 
                 runNano(session, cfg.password, currentDirectory, arg);
+
+                continue;
+            }
+        }
+
+
+        {
+            std::string t = trim(command);
+
+            if (t == "ports" || t.rfind("ports ", 0) == 0)
+            {
+                if (firewall)
+                    firewall->handle(trim(t.substr(5)));
+                else
+                    std::cout << "Port manager is not available.\n";
 
                 continue;
             }
@@ -1522,7 +1540,7 @@ void runServerTerminal(
         std::cout
             << "Available commands: "
             << "help, ls, pwd, cd, nano, security, telegram, "
-            << "hardening, sshkeys, fileguard, web, exit\n";
+            << "hardening, sshkeys, fileguard, ports, web, exit\n";
     }
 }
 
@@ -1693,7 +1711,14 @@ int main()
         );
 
 
-        // Сайт читается из %LOCALAPPDATA%\ServerGuard\web
+        FirewallManager firewall(
+            session,
+            cfg.password,
+            cfg.username,
+            cfg.port
+        );
+
+
         WebServer webServer(
             webRootPath(),
             "127.0.0.1",
@@ -1735,7 +1760,8 @@ int main()
             &sshKeyGuard,
             &security,
             &sshHardening,
-            &webServer
+            &webServer,
+            &firewall
         );
 
 

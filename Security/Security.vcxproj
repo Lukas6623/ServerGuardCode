@@ -206,6 +206,7 @@
   <!-- ====================================================== -->
   <ItemGroup>
     <ClInclude Include="FileGuard.h" />
+    <ClInclude Include="Firewall.h" />
     <ClInclude Include="handlers\WebServerHelpers.h" />
     <ClInclude Include="Help.h" />
     <ClInclude Include="Nano.h" />
