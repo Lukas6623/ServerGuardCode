@@ -15,12 +15,16 @@ TelegramBot::TelegramBot(LIBSSH2_SESSION* sshSession, const std::string& passwor
     sudoAuthenticated = false;
 }
 
-bool TelegramBot::executeRemote(const std::string& command, std::string& output, int& exitCode, bool useSudo)
+bool TelegramBot::executeRemote(
+    const std::string& command,
+    std::string& output,
+    int& exitCode,
+    bool useSudo)
 {
     output.clear();
     exitCode = -1;
 
-    if (!session)
+    if (session == nullptr)
     {
         output = "SSH session is invalid.";
         return false;
@@ -44,18 +48,71 @@ bool TelegramBot::executeRemote(const std::string& command, std::string& output,
 
     LIBSSH2_CHANNEL* channel = libssh2_channel_open_session(session);
 
-    if (!channel)
+    if (channel == nullptr)
     {
-        output = "Cannot open SSH channel.";
+        char* errorMessage = nullptr;
+        int errorLength = 0;
+
+        int errorCode = libssh2_session_last_error(
+            session,
+            &errorMessage,
+            &errorLength,
+            0
+        );
+
+        std::ostringstream error;
+
+        error << "Cannot open SSH channel. "
+            << "libssh2 error: " << errorCode;
+
+        if (errorMessage != nullptr && errorLength > 0)
+        {
+            error << ". Details: "
+                << std::string(errorMessage, errorLength);
+        }
+
+        output = error.str();
         return false;
     }
 
-    libssh2_channel_handle_extended_data2(channel, LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE);
+    libssh2_channel_handle_extended_data2(
+        channel,
+        LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE
+    );
 
-    if (libssh2_channel_exec(channel, finalCommand.c_str()) != 0)
+    int execResult = libssh2_channel_exec(
+        channel,
+        finalCommand.c_str()
+    );
+
+    if (execResult != 0)
     {
-        output = "Cannot execute remote command.";
+        char* errorMessage = nullptr;
+        int errorLength = 0;
+
+        int errorCode = libssh2_session_last_error(
+            session,
+            &errorMessage,
+            &errorLength,
+            0
+        );
+
+        std::ostringstream error;
+
+        error << "Cannot execute remote command. "
+            << "libssh2 error: " << errorCode;
+
+        if (errorMessage != nullptr && errorLength > 0)
+        {
+            error << ". Details: "
+                << std::string(errorMessage, errorLength);
+        }
+
+        output = error.str();
+
+        libssh2_channel_close(channel);
         libssh2_channel_free(channel);
+
         return false;
     }
 
@@ -63,12 +120,15 @@ bool TelegramBot::executeRemote(const std::string& command, std::string& output,
 
     while (true)
     {
-        int rc = static_cast<int>(libssh2_channel_read(channel, buffer, sizeof(buffer) - 1));
+        ssize_t rc = libssh2_channel_read(
+            channel,
+            buffer,
+            sizeof(buffer) - 1
+        );
 
         if (rc > 0)
         {
-            buffer[rc] = '\0';
-            output += buffer;
+            output.append(buffer, static_cast<std::size_t>(rc));
             continue;
         }
 
@@ -81,8 +141,34 @@ bool TelegramBot::executeRemote(const std::string& command, std::string& output,
         }
 
         if (rc == LIBSSH2_ERROR_EAGAIN)
-            continue;
+        {
+            output += "\nSSH read returned LIBSSH2_ERROR_EAGAIN.";
+            break;
+        }
 
+        char* errorMessage = nullptr;
+        int errorLength = 0;
+
+        int errorCode = libssh2_session_last_error(
+            session,
+            &errorMessage,
+            &errorLength,
+            0
+        );
+
+        std::ostringstream error;
+
+        error << "\nSSH channel read failed. "
+            << "Read result: " << rc
+            << "; libssh2 error: " << errorCode;
+
+        if (errorMessage != nullptr && errorLength > 0)
+        {
+            error << ". Details: "
+                << std::string(errorMessage, errorLength);
+        }
+
+        output += error.str();
         break;
     }
 
@@ -96,6 +182,7 @@ bool TelegramBot::executeRemote(const std::string& command, std::string& output,
 
     return exitCode == 0;
 }
+
 
 bool TelegramBot::authenticateSudo()
 {
@@ -892,43 +979,51 @@ bool TelegramBot::createConfig()
 
 bool TelegramBot::createConfig(const std::string& token)
 {
-    if (configExists())
-    {
-        std::cout << "\nTelegram configuration already exists.\n";
-        std::cout << "Existing bot token will be preserved.\n";
-        return true;
-    }
-
     if (token.empty())
     {
         std::cout << "Telegram bot token cannot be empty.\n";
         return false;
     }
 
-    std::size_t colon = token.find(':');
+    const std::size_t colon = token.find(':');
 
-    if (colon == std::string::npos || colon == 0 || colon == token.size() - 1)
+    if (colon == std::string::npos ||
+        colon == 0 ||
+        colon == token.size() - 1)
     {
         std::cout << "Telegram token format looks invalid.\n";
-        std::cout << "Expected format:\n";
-        std::cout << "123456789:AAxxxxxxxx...\n";
         return false;
     }
 
-    std::string config = "BOT_TOKEN=" + token + "\n";
-    std::string encoded = base64Encode(config);
+    for (unsigned char c : token)
+    {
+        if (!(std::isalnum(c) || c == ':' || c == '_' || c == '-'))
+        {
+            std::cout << "Telegram token contains invalid characters.\n";
+            return false;
+        }
+    }
 
-    std::string command =
-        "echo " + shellQuote(encoded) + " | base64 -d > " + shellQuote(TELEGRAM_CONFIG) +
+    const std::string config = "BOT_TOKEN=" + token + "\n";
+    const std::string encoded = base64Encode(config);
+
+    const std::string command =
+        "printf '%s' " + shellQuote(encoded) +
+        " | base64 -d > " + shellQuote(TELEGRAM_CONFIG) +
         " && chmod 600 " + shellQuote(TELEGRAM_CONFIG) +
         " && chown root:root " + shellQuote(TELEGRAM_CONFIG);
 
     std::string output;
     int exitCode = -1;
 
-    if (!executeRemote(command, output, exitCode, true) || exitCode != 0)
+    if (!executeRemote(command, output, exitCode, true) ||
+        exitCode != 0)
     {
-        std::cout << "Failed to create Telegram configuration.\n";
+        std::cout << "Failed to save Telegram configuration.\n";
+
+        if (!output.empty())
+            std::cout << output << '\n';
+
         return false;
     }
 
@@ -938,10 +1033,10 @@ bool TelegramBot::createConfig(const std::string& token)
         return false;
     }
 
-    std::cout << "Telegram configuration created successfully.\n";
-
+    std::cout << "Telegram configuration saved successfully.\n";
     return true;
 }
+
 
 bool TelegramBot::createSystemdService()
 {
