@@ -205,6 +205,7 @@
   <!-- HEADER FILES                                           -->
   <!-- ====================================================== -->
   <ItemGroup>
+    <ClInclude Include="config.h" />
     <ClInclude Include="FileGuard.h" />
     <ClInclude Include="Firewall.h" />
     <ClInclude Include="handlers\WebServerHelpers.h" />
