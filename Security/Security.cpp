@@ -24,15 +24,12 @@ static const std::string SECURITY_BACKUP_DIR = "/opt/serverguard/backups/securit
 static const std::string SECURITY_BACKUP_SCRIPT = "/opt/serverguard/backups/security/brute_force_guard.py";
 static const std::string SECURITY_STATS_FILE = "/opt/serverguard/data/stats.json";
 
-// Optional integrity pin. If you set this to the SHA256 of the released script,c
-// every download is verified against it. Empty = no hash check (a warning is printed).
+
 static const std::string SECURITY_SCRIPT_SHA256 = "";
 
 static const int SECURITY_BACKUP_KEEP = 5;
 
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
+
 
 static void sleepMs(int ms)
 {
@@ -249,9 +246,7 @@ static std::string securityJsonEscape(const std::string& value)
     return result;
 }
 
-// ---------------------------------------------------------------------------
-// Construction / runtime API
-// ---------------------------------------------------------------------------
+
 
 Security::Security(LIBSSH2_SESSION* sshSession, const std::string& password)
     : session(sshSession),
@@ -309,9 +304,7 @@ bool Security::isSSHSecurityEnabled() const
     return sshSecurity;
 }
 
-// ---------------------------------------------------------------------------
-// SSH transport
-// ---------------------------------------------------------------------------
+
 
 bool Security::reconnect()
 {
@@ -346,9 +339,7 @@ bool Security::reconnect()
     return true;
 }
 
-// Returns: 0 = command finished (exitCode is valid)
-//          1 = transport problem (retry / reconnect makes sense)
-//          2 = fatal for this command (timeout, missing password, ...)
+
 int Security::executeOnce(
     const std::string& command,
     std::string& output,
@@ -365,8 +356,7 @@ int Security::executeOnce(
         return 1;
     }
 
-    // Force blocking mode with a read timeout for the duration of the call,
-    // then restore whatever the application had configured.
+
     struct ModeGuard
     {
         LIBSSH2_SESSION* s;
@@ -413,7 +403,7 @@ int Security::executeOnce(
             libssh2_channel_free(channel);
         };
 
-    // Must be set BEFORE exec, otherwise stderr can be lost.
+
     libssh2_channel_handle_extended_data2(channel, LIBSSH2_CHANNEL_EXTENDED_DATA_MERGE);
 
     const bool usePty = elevated && needPty;
@@ -423,8 +413,7 @@ int Security::executeOnce(
         libssh2_channel_request_pty(channel, "xterm");
     }
 
-    // sh -c makes the behaviour independent of the remote login shell (fish/csh/...),
-    // LC_ALL=C gives stable output, PATH is extended with the sbin directories.
+
     const std::string wrapped =
         "export LC_ALL=C PATH=\"$PATH:/usr/local/sbin:/usr/sbin:/sbin\"; " + command;
 
@@ -504,8 +493,7 @@ int Security::executeOnce(
         }
     }
 
-    // Close stdin so that nothing (sudo retry prompt, a command reading stdin)
-    // can wait forever for more input.
+
     if (!usePty)
     {
         libssh2_channel_send_eof(channel);
@@ -620,7 +608,7 @@ bool Security::executeRemote(
     output.clear();
     exitCode = -1;
 
-    // Lazy privilege detection: works even if a web handler calls us first.
+
     if (useSudo && !inPrivilegeCheck && !sudoAuthenticated)
     {
         if (!ensurePrivileges())
@@ -646,7 +634,7 @@ bool Security::executeRemote(
 
                 if (contains(low, "must have a tty") || contains(low, "requiretty"))
                 {
-                    // Auto-fix: sudo wants a terminal, retry with a pty.
+
                     needPty = true;
                     continue;
                 }
@@ -660,7 +648,7 @@ bool Security::executeRemote(
             return false;
         }
 
-        // Transport problem: reconnect (if possible) and retry.
+
         if (attempt + 1 < maxAttempts)
         {
             if (!reconnect())
@@ -675,9 +663,7 @@ bool Security::executeRemote(
     return false;
 }
 
-// ---------------------------------------------------------------------------
-// Privileges
-// ---------------------------------------------------------------------------
+
 
 bool Security::ensurePrivileges()
 {
@@ -796,7 +782,7 @@ bool Security::checkPrivileges(bool verbose)
 
     sudoRequired = true;
 
-    // Passwordless sudo (NOPASSWD) first.
+
     output.clear();
 
     if (executeRemote("sudo -n true", output, exitCode, false, 20) && exitCode == 0)
@@ -852,9 +838,7 @@ bool Security::checkRootOrSudo()
     return checkPrivileges(true);
 }
 
-// ---------------------------------------------------------------------------
-// Environment / packages
-// ---------------------------------------------------------------------------
+
 
 bool Security::commandExists(const std::string& command)
 {
@@ -938,7 +922,7 @@ bool Security::installPackages(const std::vector<std::string>& packages)
 
         if (manager == "apt" && contains(low, "dpkg --configure -a"))
         {
-            // Auto-fix an interrupted dpkg.
+
             std::string fixOutput;
             int fixCode = -1;
 
@@ -1023,9 +1007,7 @@ std::string Security::pythonPath()
     return "/usr/bin/python3";
 }
 
-// ---------------------------------------------------------------------------
-// Firewall
-// ---------------------------------------------------------------------------
+
 
 std::vector<std::string> Security::detectSshPorts()
 {
@@ -1033,7 +1015,6 @@ std::vector<std::string> Security::detectSshPorts()
     std::string output;
     int exitCode = -1;
 
-    // 1. Port of the connection we are using right now (never lock ourselves out).
     if (executeRemote("echo \"${SSH_CONNECTION##* }\"", output, exitCode, false, 15))
     {
         const std::string port = trim(output);
@@ -1044,7 +1025,7 @@ std::vector<std::string> Security::detectSshPorts()
         }
     }
 
-    // 2. Effective sshd configuration (needs root to read host keys).
+
     output.clear();
 
     if (executeRemote("sshd -T 2>/dev/null | awk '$1 == \"port\" {print $2}'", output, exitCode, true, 30))
@@ -1058,7 +1039,7 @@ std::vector<std::string> Security::detectSshPorts()
         }
     }
 
-    // 3. Active sshd listeners (covers ssh.socket activation).
+
     output.clear();
 
     if (executeRemote("ss -ltnp 2>/dev/null | grep sshd", output, exitCode, true, 20))
@@ -1076,7 +1057,7 @@ std::vector<std::string> Security::detectSshPorts()
         }
     }
 
-    // 4. Config files as the last resort.
+
     output.clear();
 
     if (executeRemote(
@@ -1152,7 +1133,7 @@ bool Security::setupFirewall(bool& firewallManaged)
         }
     }
 
-    // Fallback path: guard works with iptables when UFW is not usable.
+
     auto useIptablesFallback = [&](const std::string& reason) -> bool
         {
             std::cout << "[WARN] " << reason << "\n";
@@ -1246,7 +1227,7 @@ bool Security::setupFirewall(bool& firewallManaged)
         return true;
     }
 
-    // First enable: keep everything that is currently reachable, so no service breaks.
+
     std::vector<std::string> tcpPorts = { "80", "443" };
 
     std::string cyberPanel;
@@ -1285,7 +1266,7 @@ bool Security::setupFirewall(bool& firewallManaged)
         }
     }
 
-    // FTP passive range (CyberPanel / pure-ftpd) when FTP is running.
+
     if (std::find(tcpPorts.begin(), tcpPorts.end(), "21") != tcpPorts.end())
     {
         output.clear();
@@ -1342,7 +1323,7 @@ bool Security::setupFirewall(bool& firewallManaged)
         return useIptablesFallback("UFW did not become active.");
     }
 
-    // Lockout protection: every SSH port must really be in the rule set.
+
     for (const std::string& port : sshPorts)
     {
         if (!contains(output, port + "/tcp"))
@@ -1363,9 +1344,6 @@ bool Security::setupFirewall(bool& firewallManaged)
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Files and service
-// ---------------------------------------------------------------------------
 
 bool Security::createDirectories()
 {
@@ -1434,7 +1412,6 @@ bool Security::createSystemdService()
     std::string output;
     int exitCode = -1;
 
-    // printf '%s' keeps the content byte-exact without needing base64.
     const std::string command =
         "printf '%s' " + shellQuote(serviceContent) +
         " > " + shellQuote(SECURITY_SERVICE_PATH + ".tmp") +
@@ -1522,8 +1499,7 @@ int Security::serviceRestartCount()
     return 0;
 }
 
-// "active" one second after start is not enough: Type=simple reports active even
-// if Python crashes right after. Watch the service and its restart counter.
+
 bool Security::waitServiceStable(int seconds)
 {
     const int baseline = serviceRestartCount();
@@ -1670,9 +1646,7 @@ bool Security::disableService()
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Script management
-// ---------------------------------------------------------------------------
+
 
 bool Security::verifyScriptFile(const std::string& path, bool runSelfTest)
 {
@@ -1835,7 +1809,7 @@ bool Security::backupCurrentSecurityScript()
 
     if (!executeRemote("test -s " + shellQuote(SECURITY_SCRIPT), output, exitCode, true))
     {
-        return true; // nothing to back up
+        return true; 
     }
 
     const std::string command =
@@ -1906,8 +1880,7 @@ bool Security::rollbackSecurityUpdate()
     return true;
 }
 
-// Makes sure a working script exists: keep it if healthy, otherwise restore from
-// backup, otherwise download a fresh copy.
+
 bool Security::ensureScriptHealthy()
 {
     std::string output;
@@ -1979,9 +1952,7 @@ void Security::registerTrustedClientIp()
     }
 }
 
-// ---------------------------------------------------------------------------
-// Install
-// ---------------------------------------------------------------------------
+
 
 bool Security::installSecurity()
 {
@@ -2030,7 +2001,7 @@ bool Security::installSecurity()
 
     if (!commandExists("ss"))
     {
-        ensureCommand("ss", "iproute2", "iproute"); // best effort
+        ensureCommand("ss", "iproute2", "iproute"); 
     }
 
     if (!commandExists("sshd"))
@@ -2116,9 +2087,8 @@ bool Security::installSecurity()
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Update
-// ---------------------------------------------------------------------------
+
+
 
 bool Security::updateSecurity()
 {
@@ -2282,9 +2252,7 @@ bool Security::updateSecurity()
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Uninstall
-// ---------------------------------------------------------------------------
+
 
 bool Security::uninstallSecurity()
 {
@@ -2322,7 +2290,7 @@ bool Security::uninstallSecurity()
 
     std::cout << "[OK] Service stopped and disabled, if it existed.\n";
 
-    // The guard knows which IPs it blocked: let it remove those firewall rules.
+
     std::cout << "[2/6] Removing firewall blocks created by ServerGuard...\n";
 
     output.clear();
@@ -2418,9 +2386,6 @@ bool Security::uninstallSecurity()
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Menu
-// ---------------------------------------------------------------------------
 
 void Security::menu()
 {
@@ -2444,7 +2409,7 @@ void Security::menu()
 
         if (!std::getline(std::cin, choice))
         {
-            break; // stdin closed
+            break; 
         }
 
         choice = trim(choice);
@@ -2649,9 +2614,7 @@ void Security::menu()
     }
 }
 
-// ---------------------------------------------------------------------------
-// Web API
-// ---------------------------------------------------------------------------
+
 
 bool Security::webInstall()
 {
@@ -2727,7 +2690,7 @@ long long Security::webThreats()
     std::string output;
     int exitCode = -1;
 
-    // The data directory is root-only, so sudo is required. Python parses the JSON properly.
+    
     const std::string command =
         "if [ -f " + shellQuote(SECURITY_STATS_FILE) + " ]; then "
         "python3 -c "
